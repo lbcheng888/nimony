@@ -157,18 +157,22 @@ proc optimizeCall(c: var GeneratedCode; n: var Cursor): bool =
         
         # Generate optimized min/max using ternary operator
         c.add ParLe
-        genx c, arg1
+        var arg1Copy = arg1
+        genx c, arg1Copy
         
         if funcName.endsWith("min"):
           c.add " < "
         else:  # max
           c.add " > "
         
-        genx c, arg2
+        var arg2Copy = arg2
+        genx c, arg2Copy
         c.add " ? "
-        genx c, arg1
+        arg1Copy = arg1 # Reset copy as genx modifies it
+        genx c, arg1Copy
         c.add " : "
-        genx c, arg2
+        arg2Copy = arg2 # Reset copy as genx modifies it
+        genx c, arg2Copy
         c.add ParRi
         
         return true
@@ -181,7 +185,7 @@ proc genCall(c: var GeneratedCode; n: var Cursor) =
   inc n
   
   # Try to apply optimizations
-  let calleePos = n
+  var calleePos = n
   if not optimizeCall(c, calleePos):
     # No optimization applied, do regular call generation
     let isCfn = isImportC(n)
