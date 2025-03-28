@@ -9,8 +9,14 @@
 
 ## NIFC driver program.
 
-import std / [parseopt, strutils, os, osproc, tables, assertions, syncio]
+import std / [parseopt, strutils, os, osproc, tables, assertions, syncio, hashes, sets, sequtils, options]
 import codegen, noptions, mangler
+
+import nifc_model
+
+import "../lib" / [nifreader, nifstreams, nifcursors, bitabs, lineinfos, nifprelude, symparser]
+import ".." / models / [nifc_tags]
+import "../gear2" / modnames
 
 when defined(windows):
   import bat
@@ -95,7 +101,7 @@ proc generateJsBackend(s: var State; files: seq[string]; flags: set[GenFlag]) =
   # Process each file
   for inp in files:
     let moduleName = splitFile(inp).name
-    let ast = loadNifFile(inp)
+    let ast = load(inp)
     
     when defined(js):
       var options = Options(
@@ -231,7 +237,7 @@ proc generateBackend(s: var State; action: Action; files: seq[string]; flags: se
       if action == atCpp:
         # Use C++ backend for .cpp files
         let moduleName = splitFile(inp).name
-        let ast = loadNifFile(inp)
+        let ast = load(inp)
         let options = Options(
           projectName: moduleName,
           outDir: s.config.nifcacheDir,
@@ -253,7 +259,7 @@ proc generateBackend(s: var State; action: Action; files: seq[string]; flags: se
     if action == atCpp:
       # Use C++ backend for .cpp files
       let moduleName = splitFile(inp).name
-      let ast = loadNifFile(inp)
+      let ast = load(inp)
       let options = Options(
         projectName: moduleName,
         outDir: s.config.nifcacheDir,

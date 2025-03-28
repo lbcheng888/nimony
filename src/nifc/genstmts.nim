@@ -96,8 +96,11 @@ proc genIf(c: var GeneratedCode; n: var Cursor) =
         
         # Optimization: If this is the only 'if' (no 'elif's) and there's no or empty 'else'
         # and the 'then' part is empty, invert the condition and skip generating empty block
-        let condStart = n
-        if (elifCount == 1) and isEmptyThenBranch(n.next) and isEmptyElseBranch(n.next.next) and canInvertCondition(condStart):
+        var condStart = n
+        var thenBranch = n +! 1
+        var elseBranch = thenBranch
+        skip(elseBranch) # Move past the 'then' branch
+        if (elifCount == 1) and isEmptyThenBranch(thenBranch) and isEmptyElseBranch(elseBranch) and canInvertCondition(condStart):
           # Skip this whole structure as it's effectively a no-op
           skipParRi n
           hasElif = true
@@ -105,8 +108,11 @@ proc genIf(c: var GeneratedCode; n: var Cursor) =
         
         # Optimization: If this is a simple if-else with empty 'then' branch, 
         # invert the condition and just use the 'else' branch
-        if (elifCount == 1) and isEmptyThenBranch(n.next) and canInvertCondition(condStart):
-          var elseStart = n.next.next
+        var thenBranch2 = n +! 1
+        var elseBranch2 = thenBranch2
+        skip(elseBranch2)
+        if (elifCount == 1) and isEmptyThenBranch(thenBranch2) and canInvertCondition(condStart):
+          var elseStart = elseBranch2 # Use the already calculated else branch cursor
           if elseStart.substructureKind == ElseU:
             if hasElif:
               c.add ElseKeyword

@@ -358,12 +358,6 @@ template moveToInitSection(body: untyped) =
     c.init.add c.code[i]
   setLen c.code, oldLen
 
-include genexprs
-
-type
-  VarKind = enum
-    IsLocal, IsGlobal, IsThreadlocal, IsConst
-
 proc evaluateLiteralBinExpr(left, right: int64, op: NifcExpr): int64 =
   # Perform constant folding for binary operations between integer literals
   case op
@@ -393,6 +387,12 @@ proc evaluateLiteralUnExpr(val: int64, op: NifcExpr): int64 =
   of NegC: result = -val
   of BitnotC: result = not val
   else: result = 0 # Not a supported operation
+
+include genexprs
+
+type
+  VarKind = enum
+    IsLocal, IsGlobal, IsThreadlocal, IsConst
 
 proc isLiteral(n: var Cursor): bool =
   case n.kind
