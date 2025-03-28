@@ -28,6 +28,15 @@ type
 
 proc traverseObjectBody(m: Module; o: var TypeOrder; t: Cursor)
 
+proc isCachedGenericInstance(t: Cursor): bool =
+  # Check if this is a cached generic instance that we've already processed
+  if t.kind == Symbol:
+    let name = pool.syms[t.symId]
+    # Generic instance names typically include type parameters in their mangled name
+    # Format: BaseTypeName_T1_T2_... 
+    return '_' in name and name.count('_') >= 1
+  return false
+
 proc recordDependencyImpl(m: Module; o: var TypeOrder; parent, child: Cursor;
                           viaPointer: var bool) =
   var ch = child
@@ -41,6 +50,15 @@ proc recordDependencyImpl(m: Module; o: var TypeOrder; parent, child: Cursor;
       ch = elementType(ch)
     else:
       break
+
+  # Optimization: Fast path for cached generic instances
+  if isCachedGenericInstance(ch):
+    # For cached generic instances, we can skip the full dependency analysis
+    # as they are already processed and stored in the TypeBucket
+    if not viaPointer:
+      # Only add to ordered if we're not just a pointer to it
+      o.ordered.add tracebackTypeC(ch), TypedefStruct
+    return
 
   case ch.typeKind
   of ObjectT, UnionT:

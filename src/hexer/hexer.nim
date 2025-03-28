@@ -16,9 +16,9 @@ Hexer is our middle-end. It transforms Nimony code into NIFC code. This requires
 multiple different steps.
 
 - Iterator inlining.
-- Lambda lifting.
+- Lambda lifting: Convert anonymous functions into top-level functions with closure environments.
 - Inject dups.
-- Lower control flow expressions to control flow statements (elminate the expr/nkStmtListExpr construct).
+- Lower control flow expressions to control flow statements (eliminate the expr/nkStmtListExpr construct).
 - Inject destructors.
 - Map builtins like `new` and `+` to "compiler procs".
 - Translate exception handling.
@@ -43,8 +43,7 @@ Hexer accepts Nimony's grammar.
 ]##
 
 import std / [parseopt, strutils, os, osproc, tables, assertions, syncio]
-import ".." / nimony / [langmodes]
-import nifcgen, lifter, duplifier, destroyer, inliner, constparams
+import nifcgen, lifter, duplifier, destroyer, inliner, constparams, lambdalift
 
 const
   Version = "0.4"

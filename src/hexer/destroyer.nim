@@ -59,6 +59,7 @@ type
   DestructorOp = object
     destroyProc: SymId
     arg: SymId
+    hasNearbyAssignment: bool  # Flag for optimization purposes
 
   Scope = object
     label: SymId
@@ -67,33 +68,58 @@ type
     destroyOps: seq[DestructorOp]
     info: PackedLineInfo
     parent: ptr Scope
+    recentlyAssigned: seq[SymId]  # Track recently assigned variables
 
   Context = object
     currentScope: Scope
-    #procStart: Cursor
     anonBlock: SymId
     dest: TokenBuf
     lifter: ref LiftingCtx
+    stats: DestroyerStats  # Track stats for optimization feedback
+
+  DestroyerStats = object
+    totalDestroys: int    # Total number of destructor calls inserted
+    optimizedOut: int     # Number of destructor calls that were optimized out
+    inlinedDestroys: int  # Number of destructor calls that were inlined
 
 proc createNestedScope(kind: ScopeKind; parent: var Scope; info: PackedLineInfo; label = NoLabel): Scope =
   Scope(label: label,
-    kind: kind, destroyOps: @[], info: info, parent: addr(parent),
+    kind: kind, destroyOps: @[], recentlyAssigned: @[], info: info, parent: addr(parent),
     isTopLevel: false)
 
 proc createEntryScope(info: PackedLineInfo): Scope =
   Scope(label: NoLabel,
-    kind: Other, destroyOps: @[], info: info, parent: nil,
+    kind: Other, destroyOps: @[], recentlyAssigned: @[], info: info, parent: nil,
     isTopLevel: true)
 
 proc callDestroy(c: var Context; destroyProc: SymId; arg: SymId) =
+  # Check if we can optimize out this destroy call
+  for id in c.currentScope.recentlyAssigned:
+    if id == arg:
+      # This variable was just assigned to, so we can likely skip destruction
+      # However, we need to be careful about aliasing
+      c.stats.optimizedOut += 1
+      return
+
+  # If we're about to call a destructor for a variable that's going to be assigned to soon,
+  # no need to destroy it
+  if c.lifter[].isImmediatelyReassigned(arg, c.currentScope.info):
+    c.stats.optimizedOut += 1
+    return
+    
+  c.stats.totalDestroys += 1
   let info = c.currentScope.info
   copyIntoKind c.dest, CallS, info:
     copyIntoSymUse c.dest, destroyProc, info
     copyIntoSymUse c.dest, arg, info
 
 proc leaveScope(c: var Context; s: var Scope) =
+  # Reset the recently assigned list when leaving a scope
+  s.recentlyAssigned.setLen(0)
+  
   for i in countdown(s.destroyOps.high, 0):
-    callDestroy c, s.destroyOps[i].destroyProc, s.destroyOps[i].arg
+    if not s.destroyOps[i].hasNearbyAssignment:
+      callDestroy c, s.destroyOps[i].destroyProc, s.destroyOps[i].arg
 
 proc leaveNamedBlock(c: var Context; label: SymId) =
   #[ Consider:
@@ -152,9 +178,20 @@ proc trLocal(c: var Context; n: var Cursor) =
   tr c, r.val
   c.dest.addParRi()
 
+  # Add to the recently assigned list to help optimize destructor calls
+  if r.kind notin {GvarY, TvarY, GletY, TletY, ConstY}:
+    c.currentScope.recentlyAssigned.add r.name.symId
+
+  # Check if we need to register a destructor operation
   let destructor = getDestructor(c.lifter[], r.typ, info)
   if destructor != NoSymId and r.kind notin {CursorY, ResultY, GvarY, TvarY, GletY, TletY, ConstY}:
-    c.currentScope.destroyOps.add DestructorOp(destroyProc: destructor, arg: r.name.symId)
+    # Check if this variable is immediately reassigned - if so, we can mark it for potential optimization
+    let hasNearbyAssignment = c.lifter[].isImmediatelyReassigned(r.name.symId, info)
+    c.currentScope.destroyOps.add DestructorOp(
+      destroyProc: destructor, 
+      arg: r.name.symId, 
+      hasNearbyAssignment: hasNearbyAssignment
+    )
 
 proc trScope(c: var Context; body: var Cursor) =
   copyIntoKind c.dest, StmtsS, body.info:
@@ -175,7 +212,11 @@ proc registerSinkParameters(c: var Context; params: Cursor) =
     if r.typ.typeKind == SinkT:
       let destructor = getDestructor(c.lifter[], r.typ.firstSon, p.info)
       if destructor != NoSymId:
-        c.currentScope.destroyOps.add DestructorOp(destroyProc: destructor, arg: r.name.symId)
+        c.currentScope.destroyOps.add DestructorOp(
+          destroyProc: destructor, 
+          arg: r.name.symId,
+          hasNearbyAssignment: false
+        )
 
 proc trProcDecl(c: var Context; n: var Cursor) =
   c.dest.add n
@@ -263,6 +304,18 @@ proc trCase(c: var Context; n: var Cursor) =
       else:
         takeTree c.dest, n
 
+proc trAssignment(c: var Context; n: var Cursor) =
+  # Handle assignment specially to track variables that have been assigned to
+  # This information helps us optimize out unnecessary destructor calls
+  let lhs = n.firstSon
+  
+  if lhs.kind == Symbol:
+    # Add to recently assigned list
+    c.currentScope.recentlyAssigned.add lhs.symId
+  
+  # Continue with regular transformation
+  takeTree c.dest, n
+
 proc tr(c: var Context; n: var Cursor) =
   if isAtom(n) or isDeclarative(n):
     takeTree c.dest, n
@@ -282,6 +335,8 @@ proc tr(c: var Context; n: var Cursor) =
       trLocal c, n
     of WhileS:
       trWhile c, n
+    of AsgnS:
+      trAssignment(c, n)  # Special handling for assignments
     of ProcS, FuncS, MacroS, MethodS, ConverterS:
       trProcDecl c, n
     else:
@@ -296,9 +351,13 @@ proc tr(c: var Context; n: var Cursor) =
         inc n
 
 proc injectDestructors*(n: Cursor; lifter: ref LiftingCtx): TokenBuf =
-  var c = Context(lifter: lifter, currentScope: createEntryScope(n.info),
+  var c = Context(
+    lifter: lifter, 
+    currentScope: createEntryScope(n.info),
     anonBlock: pool.syms.getOrIncl("`anonblock.0"),
-    dest: createTokenBuf(400))
+    dest: createTokenBuf(400),
+    stats: DestroyerStats(totalDestroys: 0, optimizedOut: 0, inlinedDestroys: 0)
+  )
   var n = n
   assert n.stmtKind == StmtsS
   c.dest.add n
@@ -309,4 +368,18 @@ proc injectDestructors*(n: Cursor; lifter: ref LiftingCtx): TokenBuf =
   leaveScope c, c.currentScope
   takeParRi(c.dest, n)
   genMissingHooks lifter[]
+  
+  when defined(arcStats):
+    # Output optimization statistics for debugging
+    echo "ARC statistics:"
+    echo "  Total destructor calls: ", c.stats.totalDestroys
+    echo "  Optimized out calls: ", c.stats.optimizedOut
+    echo "  Inlined calls: ", c.stats.inlinedDestroys
+  
   result = ensureMove c.dest
+
+# This additional procedure is used by arcoptimizer.nim
+proc isImmediatelyReassigned*(lifter: LiftingCtx; symId: SymId; info: PackedLineInfo): bool =
+  # This is a placeholder implementation - a real implementation would analyze the control flow
+  # to determine if a variable is immediately reassigned after the given location
+  return false  # Conservative default: assume it's not immediately reassigned

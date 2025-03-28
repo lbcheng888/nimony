@@ -46,13 +46,22 @@ proc closeScope(c: var GeneratedCode) =
 
 proc stealFrom*(c: var GeneratedCode; current: LitId; loc: Location; weights: Table[LitId, VarInfo]) =
   let lookFor = if loc.typ.kind == AFloat: InRegFp else: InReg
+  var bestVarToSteal: LitId
+  var maxWeightDiff = -1.0  # Track the weight difference to find optimal variable to steal from
+  
+  # First pass: Find the optimal variable to steal from based on weight difference
   for i in 0..<c.scopes.len:
     for v in c.scopes[i].vars:
       if c.locals[v].kind == lookFor:
-        if weights[current].weight > weights[v].weight:
-          c.locals[current] = c.locals[v]
-          c.locals[v] = loc
-          break
+        let weightDiff = weights[current].weight - weights[v].weight
+        if weightDiff > 0 and (bestVarToSteal == 0.LitId or weightDiff > maxWeightDiff):
+          bestVarToSteal = v
+          maxWeightDiff = weightDiff
+  
+  # If we found a viable candidate, perform the register stealing
+  if bestVarToSteal != 0.LitId:
+    c.locals[current] = c.locals[bestVarToSteal]
+    c.locals[bestVarToSteal] = loc
 
 proc allocRegsForProc(c: var GeneratedCode; t: Tree; n: NodePos; weights: Table[LitId, VarInfo]) =
   # Step 2.
