@@ -230,9 +230,9 @@ proc getNumberQualifier(c: var GeneratedCode; n: Cursor): string =
   of AtomicQ:
     if c.m.config.backend == backendC:
       result = "_Atomic "
-    else:
-      # TODO: cpp doesn't support _Atomic
-      result = ""
+    else: # backendCpp
+      # Use std::atomic for C++ backend
+      result = "std::atomic " 
   of RestrictQ, NoQualifier, CppRefQ:
     error c.m, "expected number qualifier but got: ", n
 
@@ -243,9 +243,9 @@ proc getPtrQualifier(c: var GeneratedCode; n: Cursor; isCppRef: var bool): strin
   of AtomicQ:
     if c.m.config.backend == backendC:
       result = "_Atomic "
-    else:
-      # TODO: cpp doesn't support _Atomic
-      result = ""
+    else: # backendCpp
+      # Use std::atomic for C++ backend
+      result = "std::atomic " 
   of RestrictQ:
     result = "restrict "
   of CppRefQ:
@@ -510,8 +510,11 @@ proc generateTypes(c: var GeneratedCode; o: TypeOrder) =
       else:
         c.add declKeyword
         c.add s
+        # Implementation Note: Attributes and pragmas associated with the
+        # type declaration itself (decl.pragmas) should be generated here,
+        # potentially affecting the struct/union definition (e.g., __attribute__((packed))).
+        # Currently, only field pragmas are handled within genObjectOrUnionBody.
         c.add CurlyLe
-        # XXX generate attributes and pragmas here
         c.genObjectOrUnionBody decl.body
         c.add CurlyRi
         c.add s

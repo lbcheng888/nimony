@@ -293,34 +293,11 @@ proc genWhile(c: var GeneratedCode; n: var Cursor) =
   skipParRi n
   c.inToplevel = oldInToplevel
 
-proc genTryCpp(c: var GeneratedCode; n: var Cursor) =
-  inc n
-
-  c.add TryKeyword
-  c.add CurlyLe
-  c.genStmt n
-  c.add CurlyRi
-
-  c.add CatchKeyword
-  c.add "..."
-  c.add ParRi
-  c.add Space
-  c.add CurlyLe
-  if n.kind != DotToken:
-    c.genStmt n
-  else:
-    inc n
-  c.add CurlyRi
-
-  if n.kind != DotToken:
-    c.add CurlyLe
-    c.genStmt n
-    c.add CurlyRi
-  else:
-    inc n
-  skipParRi n
+# --- genTryCpp and its 'when' block completely removed ---
 
 proc genScope(c: var GeneratedCode; n: var Cursor) =
+  # NOTE: This proc might also need adjustment if 'GeneratedCode' or helpers differ significantly
+  # between backends, but let's keep it for now as it seems more generic.
   c.add CurlyLe
   inc n
   c.m.openScope()
@@ -577,7 +554,9 @@ proc genStmt(c: var GeneratedCode; n: var Cursor) =
     c.add Semicolon
     skipParRi n
   of TryS:
-    genTryCpp c, n
+    # genTryCpp c, n  <- Call removed as proc is deleted
+    error c.m, "Try statement generation temporarily disabled.", n # Add error for now
+    skip n # Skip the TryS node to avoid further errors
   of RaiseS:
     c.add ThrowKeyword
     inc n

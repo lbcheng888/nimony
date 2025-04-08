@@ -3553,80 +3553,73 @@ proc semProc(c: var SemContext; it: var Item; kind: SymKind; pass: PassKind) =
         attachConverter c, symId, declStart, beforeExportMarker, beforeGenericParams, info
       elif kind == MethodY:
         attachMethod c, symId, declStart, beforeParams, beforeGenericParams, info
-    if it.n.kind != DotToken:
+
+    # --- Body Handling based on Pass ---
+    if it.n.kind != DotToken: # Check if there is a body
       case pass
-      of checkGenericInst:
-        if it.n.stmtKind != StmtsS:
-          error "(stmts) expected, but got ", it.n
-        c.openScope() # open body scope
-        takeToken c, it.n
-        semProcBody c, it
-        c.closeScope() # close body scope
+      of checkSignatures:
+        # Pass 1: Signatures only. Skip the body entirely.
+        c.takeTree it.n # Consume the body node without processing it
         c.closeScope() # close parameter scope
-
-        let hk = hookToKind(getHookName(symId))
-        if hk != NoHook:
-          let params = getParamsType(c, beforeParams)
-          assert params.len >= 1
-          let obj = getObjSymId(c, params[0])
-          registerHook(c, obj, symId, hk, false)
-
-      of checkBody:
+      of checkBody, checkGenericInst:
+        # Pass 2: Body checking (or generic instantiation which is like body checking)
         if it.n.stmtKind != StmtsS:
-          error "(stmts) expected, but got ", it.n
+          error "(stmts) expected, but got ", it.n # Should be an error if body exists but isn't (stmts ...)
         c.openScope() # open body scope
         var resId = SymId(0)
         if UntypedP in crucial.flags and c.routine.inGeneric > 0: # includes templates
-          # should eventually be default for compat mode
+          # Handle untyped templates/generics separately if needed
           let mode = if kind == TemplateY: UntypedTemplate else: UntypedGeneric
           var ctx = createUntypedContext(addr c, mode)
           addParams(ctx, beforeGenericParams)
           addParams(ctx, beforeParams)
           semTemplBody ctx, it.n
         else:
-          takeToken c, it.n
-          resId = declareResult(c, it.n.info)
-          semProcBody c, it
+          # Standard body processing
+          takeToken c, it.n # Consume the (stmts tag
+          resId = declareResult(c, it.n.info) # Declare 'result' if needed
+          semProcBody c, it # Process the actual body statements/expressions
         c.closeScope() # close body scope
         c.closeScope() # close parameter scope
         if resId != SymId(0):
-          addReturnResult c, resId, it.n.info
+          addReturnResult c, resId, it.n.info # Add implicit 'return result' if needed
+
+        # Register hooks after body processing (relevant for checkGenericInst too)
         let name = getHookName(symId)
         let hk = hookToKind(name)
         if hk != NoHook:
           let objCursor = semHook(c, name, beforeParams, symId, info)
           let obj = getObjSymId(c, objCursor)
+          # Register hook: generic status depends on routine context, not pass kind directly
+          registerHook(c, obj, symId, hk, c.routine.inGeneric > 0 or pass == checkGenericInst)
 
-          # because it's a hook for sure
-          registerHook(c, obj, symId, hk, c.routine.inGeneric > 0)
-
-      of checkSignatures:
-        c.takeTree it.n
-        c.closeScope() # close parameter scope
       of checkConceptProc:
+        # Concepts have no body.
         c.closeScope() # close parameter scope
-        if it.n.kind == DotToken:
-          inc it.n
-        else:
-          c.buildErr it.n.info, "inside a `concept` a routine cannot have a body"
-          skip it.n
+        c.buildErr it.n.info, "inside a `concept` a routine cannot have a body"
+        skip it.n # Skip the unexpected body node
     else:
+      # No body provided (it.n.kind == DotToken)
+      # Handle pragmas like .borrow or .error which imply no body
       if ErrorP in crucial.flags and pass in {checkGenericInst, checkBody}:
+        # Handle error pragma - register hooks if applicable
         let name = getHookName(symId)
         let hk = hookToKind(name)
         if hk != NoHook:
           let objCursor = semHook(c, name, beforeParams, symId, info)
           let obj = getObjSymId(c, objCursor)
-          registerHook(c, obj, symId, hk, c.routine.inGeneric > 0)
-        takeToken c, it.n
+          registerHook(c, obj, symId, hk, c.routine.inGeneric > 0 or pass == checkGenericInst)
+        takeToken c, it.n # Consume the DotToken
       elif BorrowP in crucial.flags and pass in {checkGenericInst, checkBody}:
+        # Handle borrow pragma
         if kind notin {ProcY, FuncY, ConverterY, TemplateY, MethodY}:
           c.buildErr it.n.info, ".borrow only valid for proc, func, converter, template or method"
         else:
-          semBorrow(c, symToIdent(symId), beforeParams)
-        inc it.n # skip DotToken
+          semBorrow(c, symToIdent(symId), beforeParams) # Generate borrowed body
+        takeToken c, it.n # Consume the DotToken
       else:
-        takeToken c, it.n
+        # Just a routine without a body (like in an interface or forward declaration)
+        takeToken c, it.n # Consume the DotToken
       c.closeScope() # close parameter scope
   finally:
     c.routine = c.routine.parent
@@ -3803,20 +3796,31 @@ proc semAsgn(c: var SemContext; it: var Item) =
 proc semEmit(c: var SemContext; it: var Item) =
   let info = it.n.info
   c.dest.add parLeToken(EmitS, info)
-  inc it.n
-  if it.n.exprKind == BracketX:
-    inc it.n
+  inc it.n # Move past 'emit' tag
+
+  if it.n.exprKind == BracketX: # Handles `emit [...]`
+    inc it.n # Move past '[' tag
     while it.n.kind != ParRi:
-      var a = Item(n: it.n, typ: c.types.autoType)
-      semExpr c, a
-      it.n = a.n
-    skipParRi it.n
-  else:
+      if it.n.kind == StringLit:
+        # If it's a string literal, take it directly without semExpr
+        takeToken c, it.n
+      else:
+        # Otherwise, perform semantic analysis
+        var a = Item(n: it.n, typ: c.types.autoType)
+        semExpr c, a
+        it.n = a.n
+    skipParRi it.n # Move past ']' tag
+  elif it.n.kind == StringLit: # Handles `emit "string"` or `emit r"""string"""`
+    # If it's a string literal, take it directly without semExpr
+    takeToken c, it.n
+  else: # Handles `emit expr` (where expr is not a string literal)
+    # Perform semantic analysis as before
     var a = Item(n: it.n, typ: c.types.autoType)
     semExpr c, a
     it.n = a.n
-  takeParRi c, it.n
-  producesVoid c, info, it.typ
+
+  takeParRi c, it.n # Move past the closing parenthesis of the original (emit ...) node
+  producesVoid c, info, it.typ # Emit statement produces void
 
 proc semDiscard(c: var SemContext; it: var Item) =
   let info = it.n.info
