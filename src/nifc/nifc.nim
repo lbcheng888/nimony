@@ -284,7 +284,8 @@ proc handleCmdLine() =
   var actionTable = initActionTable()
 
   var s = State(config: ConfigRef(), bits: sizeof(int)*8)
-  when defined(macos): # TODO: switches to default config for platforms
+  # Set platform-specific default C compiler
+  when defined(macos): 
     s.config.cCompiler = ccCLang
   else:
     s.config.cCompiler = ccGcc

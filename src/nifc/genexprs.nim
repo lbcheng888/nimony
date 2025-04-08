@@ -327,8 +327,10 @@ proc suffixToType(c: var GeneratedCode; suffix: Cursor) =
   of "f32":
     c.add "NF32"
   else:
-    # TODO: f128?
-    quit "unsupported suffix"
+    # f128 (quad-precision float) is not universally supported in C/C++.
+    # Requires specific compiler support (e.g., __float128 in GCC/Clang).
+    # For now, consider it an unsupported suffix.
+    quit "unsupported suffix: " & pool.strings[suffix.litId]
 
 proc suffixConv(c: var GeneratedCode; value, suffix: Cursor) =
   c.add ParLe

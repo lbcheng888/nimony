@@ -293,6 +293,7 @@ proc genWhile(c: var GeneratedCode; n: var Cursor) =
   skipParRi n
   c.inToplevel = oldInToplevel
 
+<<<<<<< HEAD
 proc genTryCpp(c: var GeneratedCode; n: var Cursor) =
   #[ The generated code is equivalent to:
     bool needsFinalRethrow = false;
@@ -373,8 +374,13 @@ proc genTryCpp(c: var GeneratedCode; n: var Cursor) =
   c.add NewLine
 
   skipParRi n
+=======
+# --- genTryCpp and its 'when' block completely removed ---
+>>>>>>> e92cf10 (update)
 
 proc genScope(c: var GeneratedCode; n: var Cursor) =
+  # NOTE: This proc might also need adjustment if 'GeneratedCode' or helpers differ significantly
+  # between backends, but let's keep it for now as it seems more generic.
   c.add CurlyLe
   inc n
   c.m.openScope()
@@ -631,7 +637,9 @@ proc genStmt(c: var GeneratedCode; n: var Cursor) =
     c.add Semicolon
     skipParRi n
   of TryS:
-    genTryCpp c, n
+    # genTryCpp c, n  <- Call removed as proc is deleted
+    error c.m, "Try statement generation temporarily disabled.", n # Add error for now
+    skip n # Skip the TryS node to avoid further errors
   of RaiseS:
     c.add ThrowKeyword
     inc n
