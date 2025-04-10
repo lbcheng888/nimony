@@ -11,7 +11,47 @@
 
 proc genx(c: var GeneratedCode; n: var Cursor)
 
+proc tryConstantFold(c: var GeneratedCode; n: var Cursor; op: NifcExpr): bool =
+  # Try to perform constant folding for expression
+  # Returns true if folding was successful
+  
+  # Save cursor position
+  let startPos = n
+  
+  # Skip past the operation token and type
+  inc n
+  skip n # type
+  
+  # Check if both operands are integer literals
+  if n.kind == IntLit:
+    let leftVal = pool.integers[n.intId]
+    inc n
+    
+    if n.kind == IntLit:
+      let rightVal = pool.integers[n.intId]
+      
+      # We have two integer literals, perform constant folding
+      let result = evaluateLiteralBinExpr(leftVal, rightVal, op)
+      
+      # Output the folded result
+      c.add $result
+      
+      # Skip the right operand and closing paren
+      inc n
+      skipParRi n
+      return true
+  
+  # Reset cursor position
+  n = startPos
+  return false
+
 proc typedBinOp(c: var GeneratedCode; n: var Cursor; opr: string) =
+  # Try constant folding first
+  let op = n.exprKind
+  if tryConstantFold(c, n, op):
+    return
+    
+  # Regular binary operation generation
   inc n
   c.add ParLe
   c.add ParLe
@@ -42,7 +82,43 @@ proc unOp(c: var GeneratedCode; n: var Cursor; opr: string) =
   c.add ParRi
   skipParRi n
 
+proc tryUnaryConstantFold(c: var GeneratedCode; n: var Cursor; op: NifcExpr): bool =
+  # Try to perform constant folding for unary expression
+  # Returns true if folding was successful
+  
+  # Save cursor position
+  let startPos = n
+  
+  # Skip past the operation token and type
+  inc n
+  skip n # type
+  
+  # Check if operand is an integer literal
+  if n.kind == IntLit:
+    let val = pool.integers[n.intId]
+    
+    # We have an integer literal, perform constant folding
+    let result = evaluateLiteralUnExpr(val, op)
+    
+    # Output the folded result
+    c.add $result
+    
+    # Skip the operand and closing paren
+    inc n
+    skipParRi n
+    return true
+  
+  # Reset cursor position
+  n = startPos
+  return false
+
 proc typedUnOp(c: var GeneratedCode; n: var Cursor; opr: string) =
+  # Try constant folding first
+  let op = n.exprKind
+  if tryUnaryConstantFold(c, n, op):
+    return
+    
+  # Regular unary operation generation
   inc n
   c.add ParLe
   c.add ParLe
@@ -53,20 +129,73 @@ proc typedUnOp(c: var GeneratedCode; n: var Cursor; opr: string) =
   c.add ParRi
   skipParRi n
 
+proc optimizeCall(c: var GeneratedCode; n: var Cursor): bool =
+  # Optimize specific function calls based on pattern matching
+  # Returns true if optimization was applied
+  let callee = n
+  if callee.kind == Symbol:
+    let funcName = pool.syms[callee.symId]
+    
+    # Optimize common math functions
+    if funcName.endsWith("min") or funcName.endsWith("max"):
+      # Check if we have exactly two arguments
+      var argCursor = n
+      var argCount = 0
+      while argCursor.kind != ParRi:
+        inc argCount
+        skip argCursor
+      
+      if argCount == 2:
+        # Rewind cursor to start of args
+        argCursor = n
+        skip argCursor  # skip function name
+        
+        # Get both arguments
+        let arg1 = argCursor
+        skip argCursor
+        let arg2 = argCursor
+        
+        # Generate optimized min/max using ternary operator
+        c.add ParLe
+        genx c, arg1
+        
+        if funcName.endsWith("min"):
+          c.add " < "
+        else:  # max
+          c.add " > "
+        
+        genx c, arg2
+        c.add " ? "
+        genx c, arg1
+        c.add " : "
+        genx c, arg2
+        c.add ParRi
+        
+        return true
+  
+  # No optimization applied
+  return false
+
 proc genCall(c: var GeneratedCode; n: var Cursor) =
   genCLineDir(c, info(n))
   inc n
-  let isCfn = isImportC(n)
-  genx c, n
-  c.add ParLe
-  var i = 0
-  while n.kind != ParRi:
-    if i > 0: c.add Comma
-    if isCfn:
-      c.flags.incl gfInCallImportC
+  
+  # Try to apply optimizations
+  let calleePos = n
+  if not optimizeCall(c, calleePos):
+    # No optimization applied, do regular call generation
+    let isCfn = isImportC(n)
     genx c, n
-    inc i
-  c.add ParRi
+    c.add ParLe
+    var i = 0
+    while n.kind != ParRi:
+      if i > 0: c.add Comma
+      if isCfn:
+        c.flags.incl gfInCallImportC
+      genx c, n
+      inc i
+    c.add ParRi
+  
   skipParRi n
 
 proc genCallCanRaise(c: var GeneratedCode; n: var Cursor) =

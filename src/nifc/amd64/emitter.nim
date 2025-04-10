@@ -105,11 +105,122 @@ proc matchParRi(c: var Context): bool =
 proc peekParRi(c: var Context): bool {.inline.} =
   c.current.kind == ParRi
 
+# Instruction optimization tracker for AMD64 peephole optimizations
+type
+  InstructionKind = enum
+    iUnknown, iMove, iLoad, iAdd, iSub, iMul, iCmp, iJmp, iPush, iPop
+  
+  PeepholeState = object
+    lastInstr: InstructionKind
+    lastDest: string
+    lastSrc: string
+    lastImmVal: int
+    inOptimizableSequence: bool
+
+var peepholeState = PeepholeState(
+  lastInstr: iUnknown,
+  lastDest: "",
+  lastSrc: "",
+  lastImmVal: 0,
+  inOptimizableSequence: false
+)
+
+proc resetPeepholeState() =
+  peepholeState = PeepholeState(
+    lastInstr: iUnknown,
+    lastDest: "",
+    lastSrc: "",
+    lastImmVal: 0,
+    inOptimizableSequence: false
+  )
+
+proc canOptimize(dest: var string; instrKind: InstructionKind; instr, op1, op2: string): bool =
+  # Detect instruction patterns that can be optimized
+  
+  # Pattern 1: mov reg, X followed by mov reg, Y -> eliminate first mov
+  if instrKind == iMove and peepholeState.lastInstr == iMove and 
+     op1 == peepholeState.lastDest:
+    # Skip generating this instruction as it would immediately be overwritten
+    return true
+  
+  # Pattern 2: mov reg, 0 -> xor reg, reg (smaller instruction)
+  if instrKind == iMove and op2 == "0":
+    # Replace with XOR
+    dest.add "xor "
+    dest.add op1
+    dest.add ", "
+    dest.add op1
+    dest.add "\n"
+    return true
+    
+  # Pattern 3: add reg, 1 -> inc reg (smaller instruction)
+  if instrKind == iAdd and op2 == "1":
+    dest.add "inc "
+    dest.add op1
+    dest.add "\n"
+    return true
+  
+  # Pattern 4: sub reg, 1 -> dec reg (smaller instruction)
+  if instrKind == iSub and op2 == "1":
+    dest.add "dec "
+    dest.add op1
+    dest.add "\n"
+    return true
+    
+  # No optimization applicable
+  return false
+
+proc trackInstruction(instrKind: InstructionKind; op1, op2: string; immVal = 0) =
+  peepholeState.lastInstr = instrKind
+  peepholeState.lastDest = op1
+  peepholeState.lastSrc = op2
+  peepholeState.lastImmVal = immVal
+
 proc emitTag(c: var Context; tag: string) =
+  # Check for known instruction patterns that we can optimize
+  var instrKind = iUnknown
+  var op1, op2 = ""
+  
+  # Extract the instruction and operands for potential optimization
+  if tag.startsWith("mov "):
+    instrKind = iMove
+    let parts = tag[4..^1].split(',')
+    if parts.len >= 2:
+      op1 = parts[0].strip()
+      op2 = parts[1].strip()
+  elif tag.startsWith("add "):
+    instrKind = iAdd
+    let parts = tag[4..^1].split(',')
+    if parts.len >= 2:
+      op1 = parts[0].strip()
+      op2 = parts[1].strip()
+  elif tag.startsWith("sub "):
+    instrKind = iSub
+    let parts = tag[4..^1].split(',')
+    if parts.len >= 2:
+      op1 = parts[0].strip()
+      op2 = parts[1].strip()
+  
+  # Try to apply peephole optimizations
+  if instrKind != iUnknown:
+    # If optimization is applied, the output is already added to c.dest
+    if canOptimize(c.dest, instrKind, tag, op1, op2):
+      # Track the instruction we actually emitted instead
+      trackInstruction(instrKind, op1, op2)
+      return
+    
+    # Track this instruction for future optimization opportunities
+    trackInstruction(instrKind, op1, op2)
+  
+  # Regular instruction emission
   c.dest.add tag
   c.dest.add " "
 
 proc emit(c: var Context; token: string) =
+  # At function boundary, reset peephole state
+  if token == "proc" or token == ":":
+    resetPeepholeState()
+  
   c.dest.add token
 
 proc matchAndEmitTag(c: var Context; tag: TagId; asStr: string): bool =

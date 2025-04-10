@@ -364,6 +364,36 @@ type
   VarKind = enum
     IsLocal, IsGlobal, IsThreadlocal, IsConst
 
+proc evaluateLiteralBinExpr(left, right: int64, op: NifcExpr): int64 =
+  # Perform constant folding for binary operations between integer literals
+  case op
+  of AddC: result = left + right
+  of SubC: result = left - right
+  of MulC: result = left * right
+  of DivC: 
+    if right != 0: result = left div right
+    else: result = 0 # Prevent division by zero
+  of ModC: 
+    if right != 0: result = left mod right
+    else: result = 0 # Prevent division by zero
+  of BitandC: result = left and right
+  of BitorC: result = left or right
+  of BitxorC: result = left xor right
+  of ShlC: 
+    if right >= 0 and right < 64: result = left shl right.int
+    else: result = 0
+  of ShrC:
+    if right >= 0 and right < 64: result = left shr right.int
+    else: result = 0
+  else: result = 0 # Not a supported operation
+
+proc evaluateLiteralUnExpr(val: int64, op: NifcExpr): int64 =
+  # Perform constant folding for unary operations on integer literals
+  case op
+  of NegC: result = -val
+  of BitnotC: result = not val
+  else: result = 0 # Not a supported operation
+
 proc isLiteral(n: var Cursor): bool =
   case n.kind
   of IntLit, UIntLit, FloatLit, CharLit, StringLit, DotToken:
@@ -387,6 +417,36 @@ proc isLiteral(n: var Cursor): bool =
         else:
           if not isLiteral(n): return false
       skipParRi n
+    # New: also consider binary operations between literals as literals
+    of AddC, SubC, MulC, DivC, ModC, 
+       BitandC, BitorC, BitxorC, ShlC, ShrC:
+      # Check if both sides are literals
+      var tmp = n
+      inc tmp
+      skip tmp # type
+      let left = tmp
+      var leftLit = left
+      if not isLiteral(leftLit): return false
+      
+      let right = tmp
+      var rightLit = right
+      if not isLiteral(rightLit): return false
+      
+      # If we got here, both sides are literals
+      result = true
+      skip n
+    # New: also consider unary operations on literals as literals
+    of NegC, BitnotC:
+      var tmp = n
+      inc tmp
+      skip tmp # type
+      let operand = tmp
+      var operandLit = operand
+      if not isLiteral(operandLit): return false
+      
+      # If we got here, the operand is a literal
+      result = true
+      skip n
     else:
       result = false
 
