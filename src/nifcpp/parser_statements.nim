@@ -4,7 +4,8 @@ import std/strutils # Added for contains
 import ./lexer
 import ./ast
 import ./parser_core # Import core definitions (Parser type, Precedence, helpers, and forward declarations)
-# Removed imports for parser_expressions and parser_types to break circular dependency
+import ./parser_expressions # Needed for expression parsing within statements
+import ./parser_types       # Needed for type parsing within statements
 
 # --- Statement Parsing Implementations ---
 
