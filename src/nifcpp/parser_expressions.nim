@@ -358,38 +358,6 @@ proc parseIndexExpression(p: var Parser, left: Expression): Expression =
     return nil
   consumeToken(p) # Consume ']'
 
-<<<<<<< HEAD
-  result = ArraySubscriptExpression(
-    array: left,
-    index: indexExpr,
-    line: lbracketToken.
-# C++ Expression Parsing Implementation for nifcpp
-
-import std/strutils
-import std/options
-import std/tables # Add direct import for getOrDefault
-import ./lexer
-import ./ast
-import ./parser_core # Import core types and helpers
-# Import modules containing the actual implementations needed
-import ./parser_types # For parseType, parseParameterList
-import ./parser_statements # For parseBlockStatement
-
-# --- Forward declaration for recursive expression parsing ---
-proc parseExpression*(p: var Parser, precedence: Precedence): Expression # Forward
-
-# --- Expression Parsing Implementations ---
-
-proc parseIdentifier*(p: var Parser): Expression = # Exported for registration
-  result = newIdentifier(p.l.currentToken.literal, p.l.currentToken.line, p.l.currentToken.col)
-  consumeToken(p) # Consume the identifier token
-
-proc parseIntegerLiteral*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-  let currentToken = p.l.currentToken # Capture token info before consuming
-  try:
-    let val = strutils
-=======
   return ArraySubscriptExpression(
     array: left,
     index: indexExpr,
@@ -548,4 +516,3 @@ proc parseExpression(p: var Parser, precedence: Precedence): Expression =
     # Loop continues, checking the *new* currentToken
   # echo "[DEBUG parseExpr] Loop finished or condition not met. Returning leftExp. current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
   return leftExp
->>>>>>> 8f2d5ac (update nifcpp)
