@@ -1,0 +1,29 @@
+;; Simple test for code generation pipeline
+
+(define my-var 42)
+
+(define (add x y)
+  (+ x y))
+
+(define result (add my-var 10))
+
+(print result) ; Expected output: 52
+
+(print (+ 1 2)) ; Test binary '+' (variadic '+' not yet supported)
+
+(print (if (> my-var 50) "big" "small")) ; Test if
+
+(define (factorial n)
+  (if (<= n 1)
+      1
+      (* n (factorial (- n 1)))))
+
+(print (factorial 5)) ; Expected output: 120
+
+;; Test printing different types (print currently only supports one arg)
+(print "Testing types:")
+;(print 123)
+;(print 45.67)
+;(print #t)
+;(print #f)
+;(print "end")

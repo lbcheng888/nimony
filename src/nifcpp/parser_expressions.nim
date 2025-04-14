@@ -1,28 +1,3 @@
-<<<<<<< HEAD
-# C++ Expression Parsing Implementation for nifcpp
-
-import std/strutils
-import std/options
-import std/tables # Add direct import for getOrDefault
-import ./lexer
-import ./ast
-import ./parser_core # Import core types and helpers
-# Import modules containing the actual implementations needed
-import ./parser_types # For parseType, parseParameterList
-import ./parser_statements # For parseBlockStatement
-
-# --- Forward declaration for recursive expression parsing ---
-proc parseExpression*(p: var Parser, precedence: Precedence): Expression # Forward
-
-# --- Expression Parsing Implementations ---
-
-proc parseIdentifier*(p: var Parser): Expression = # Exported for registration
-  result = newIdentifier(p.l.currentToken.literal, p.l.currentToken.line, p.l.currentToken.col)
-  consumeToken(p) # Consume the identifier token
-
-proc parseIntegerLiteral*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-=======
 # C++ Parser - Expression Parsing Logic
 
 import std/strutils
@@ -39,7 +14,6 @@ proc parseIdentifier(p: var Parser): Expression =
   consumeToken(p) # Consume the identifier token
 
 proc parseIntegerLiteral(p: var Parser): Expression =
->>>>>>> 8f2d5ac (update nifcpp)
   let currentToken = p.l.currentToken # Capture token info before consuming
   try:
     let val = strutils.parseBiggestInt(currentToken.literal)
@@ -47,17 +21,10 @@ proc parseIntegerLiteral(p: var Parser): Expression =
     consumeToken(p) # Consume the integer literal token
   except ValueError:
     p.errors.add("Invalid integer literal: " & currentToken.literal)
-<<<<<<< HEAD
-    consumeToken(p) # Consume the invalid token
-
-proc parseFloatLiteral*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-=======
     result = nil
     consumeToken(p) # Consume the invalid token
 
 proc parseFloatLiteral(p: var Parser): Expression =
->>>>>>> 8f2d5ac (update nifcpp)
   let currentToken = p.l.currentToken # Capture token info before consuming
   try:
     let val = strutils.parseFloat(currentToken.literal)
@@ -65,16 +32,6 @@ proc parseFloatLiteral(p: var Parser): Expression =
     consumeToken(p) # Consume the float literal token
   except ValueError:
     p.errors.add("Invalid float literal: " & currentToken.literal)
-<<<<<<< HEAD
-    consumeToken(p) # Consume the invalid token
-
-proc parseStringLiteral*(p: var Parser): Expression = # Exported for registration
-  result = StringLiteral(value: p.l.currentToken.literal, line: p.l.currentToken.line, col: p.l.currentToken.col)
-  consumeToken(p) # Consume the string literal token
-
-proc parseCharLiteral*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-=======
     result = nil
     consumeToken(p) # Consume the invalid token
 
@@ -83,25 +40,17 @@ proc parseStringLiteral(p: var Parser): Expression =
   consumeToken(p) # Consume the string literal token
 
 proc parseCharLiteral(p: var Parser): Expression =
->>>>>>> 8f2d5ac (update nifcpp)
   let currentToken = p.l.currentToken # Capture token info before consuming
   if currentToken.literal.len == 1:
      result = CharLiteral(value: currentToken.literal[0], line: currentToken.line, col: currentToken.col)
      consumeToken(p) # Consume the char literal token
   else:
      p.errors.add("Invalid character literal content from lexer: '" & currentToken.literal & "'")
-<<<<<<< HEAD
-     consumeToken(p) # Consume the invalid token
-
-proc parsePrefixExpression*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-=======
      result = nil
      consumeToken(p) # Consume the invalid token
      return nil
 
 proc parsePrefixExpression(p: var Parser): Expression =
->>>>>>> 8f2d5ac (update nifcpp)
   let operatorToken = p.l.currentToken
   consumeToken(p) # Consume the prefix operator
   let right = p.parseExpression(Precedence.Prefix) # Use qualified Prefix
@@ -109,11 +58,7 @@ proc parsePrefixExpression(p: var Parser): Expression =
       p.errors.add("Failed to parse operand for prefix operator " & $operatorToken.kind)
       return nil
   # Create and return the UnaryExpression node
-<<<<<<< HEAD
-  result = UnaryExpression(
-=======
   return UnaryExpression(
->>>>>>> 8f2d5ac (update nifcpp)
     op: operatorToken.kind,
     operand: right,
     isPrefix: true, # All operators handled here are prefix
@@ -121,15 +66,6 @@ proc parsePrefixExpression(p: var Parser): Expression =
     col: operatorToken.col
   )
 
-<<<<<<< HEAD
-proc parseInfixExpression*(p: var Parser, left: Expression): Expression = # Exported for registration
-  result = nil # ProveInit
-  let operatorToken = p.l.currentToken
-  let precedence = p.currentPrecedence()
-  consumeToken(p)
-
-  var right: Expression
-=======
 proc parseInfixExpression(p: var Parser, left: Expression): Expression =
   # Corrected Debug: Use repr()
   # echo "[DEBUG infixExpr] Start. Operator=", $p.l.currentToken.kind, " Left=", (if left != nil: repr(left) else: "nil"), " current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
@@ -144,42 +80,17 @@ proc parseInfixExpression(p: var Parser, left: Expression): Expression =
   # Handle right-associativity for assignment
   var right: Expression
   # echo "[DEBUG infixExpr] Parsing right operand with precedence: ", $precedence
->>>>>>> 8f2d5ac (update nifcpp)
   if precedence == Precedence.Assign: # Use qualified Assign
     right = p.parseExpression(precedence.pred) # Slightly lower precedence for right operand
   else:
     right = p.parseExpression(precedence)
 
-<<<<<<< HEAD
-=======
   # Corrected Debug: Use repr()
   # echo "[DEBUG infixExpr] Parsed right operand. Right=", (if right != nil: repr(right) else: "nil"), ". current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
->>>>>>> 8f2d5ac (update nifcpp)
   if right == nil:
       p.errors.add("Failed to parse right operand for infix operator " & $operatorToken.kind)
       return nil
 
-<<<<<<< HEAD
-  result = BinaryExpression(left: left, op: operatorToken.kind, right: right, line: operatorToken.line, col: operatorToken.col)
-
-proc parseGroupedExpression*(p: var Parser): Expression = # Exported for registration
-  consumeToken(p) # Consume '('
-  let exp = p.parseExpression(Precedence.Lowest) # Use qualified Lowest
-  if not p.expectPeek(tkRParen): # Checks for ')' and consumes it if present
-    return nil
-  # expectPeek already consumed ')', no need for consumeToken(p) here
-  return exp
-
-proc parseCallExpression*(p: var Parser, function: Expression): Expression = # Exported for registration
-  result = nil # ProveInit
-  # Assumes currentToken is tkLParen (already consumed by infix logic)
-  var args: seq[Expression] = @[]
-  let line = p.l.currentToken.line; let col = p.l.currentToken.col # Capture '(' location
-
-  if p.l.peekToken.kind != tkRParen:
-    consumeToken(p) # Consume first token of first argument
-    let firstArg = p.parseExpression(Precedence.Assign) # Use qualified Assign
-=======
   # TODO: Handle specific infix operators like [], ., -> if needed
   # For now, assume BinaryExpression covers most cases
   let resultNode = BinaryExpression(left: left, op: operatorToken.kind, right: right, line: operatorToken.line, col: operatorToken.col)
@@ -204,16 +115,10 @@ proc parseCallExpression(p: var Parser, function: Expression): Expression =
     # echo "[DEBUG parseCallExpr] Parsing first argument. current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
     let firstArg = p.parseExpression(Precedence.Assign) # Use qualified Assign
     # echo "[DEBUG parseCallExpr] Parsed first argument. Result=", (if firstArg != nil: repr(firstArg) else: "nil"), ". current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
->>>>>>> 8f2d5ac (update nifcpp)
     if firstArg == nil:
         p.errors.add("Failed to parse first argument in function call at " & $p.l.currentToken.line & ":" & $p.l.currentToken.col)
         return nil
     args.add(firstArg)
-<<<<<<< HEAD
-    while p.l.currentToken.kind == tkComma:
-      consumeToken(p) # Consume ','
-      let nextArg = p.parseExpression(Precedence.Assign) # Use qualified Assign
-=======
     # Corrected loop condition: Check CURRENT token for comma
     while p.l.currentToken.kind == tkComma:
       consumeToken(p) # Consume ','
@@ -221,26 +126,12 @@ proc parseCallExpression(p: var Parser, function: Expression): Expression =
       # echo "[DEBUG parseCallExpr] Parsing next argument after comma. current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
       let nextArg = p.parseExpression(Precedence.Assign) # Use qualified Assign
       # echo "[DEBUG parseCallExpr] Parsed next argument. Result=", (if nextArg != nil: repr(nextArg) else: "nil"), ". current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
->>>>>>> 8f2d5ac (update nifcpp)
       if nextArg == nil:
           p.errors.add("Failed to parse subsequent argument in function call at " & $p.l.currentToken.line & ":" & $p.l.currentToken.col)
           return nil
       args.add(nextArg)
 
   # Now, the current token *should* be the closing parenthesis ')'
-<<<<<<< HEAD
-  if p.l.currentToken.kind != tkRParen:
-    let errorLine = if function != nil: function.line else: line # Use '(' line if possible
-    let errorCol = if function != nil: function.col else: col # Use '(' col if possible
-    p.errors.add("Expected ')' or ',' in argument list, got " & $p.l.currentToken.kind & " at " & $errorLine & ":" & $errorCol)
-    return nil
-  consumeToken(p) # Consume ')'
-
-  result = CallExpression(function: function, arguments: args, line: function.line, col: function.col) # Use function's location
-
-proc parseInitializerListExpression*(p: var Parser): Expression = # Exported for registration
-  result = nil # ProveInit
-=======
   # echo "[DEBUG parseCallExpr] Finished parsing arguments. Expecting ')'. current=", $p.l.currentToken.kind, " peek=", $p.l.peekToken.kind
   if p.l.currentToken.kind != tkRParen:
     # Use line/col from the opening parenthesis if possible for better error location
@@ -255,7 +146,6 @@ proc parseInitializerListExpression*(p: var Parser): Expression = # Exported for
   return CallExpression(function: function, arguments: args, line: function.line, col: function.col)
 
 proc parseInitializerListExpression(p: var Parser): Expression =
->>>>>>> 8f2d5ac (update nifcpp)
   let line = p.l.currentToken.line
   let col = p.l.currentToken.col
   consumeToken(p) # Consume '{'
@@ -286,25 +176,6 @@ proc parseInitializerListExpression(p: var Parser): Expression =
     return nil
   consumeToken(p) # Consume '}'
 
-<<<<<<< HEAD
-  result = InitializerListExpr(values: values, line: line, col: col)
-
-proc parseMemberAccessExpression*(p: var Parser, left: Expression): Expression = # Exported for registration
-  result = nil # ProveInit
-  let operatorToken = p.l.currentToken # Should be tkDot or tkArrow
-  # DO NOT consumeToken(p) here. Infix logic already did.
-
-  if p.l.peekToken.kind != tkIdentifier: # Peek ahead for the member name
-    p.errors.add("Expected identifier after '" & $operatorToken.kind & "', got " & $p.l.peekToken.kind & " at " & $p.l.peekToken.line & ":" & $p.l.peekToken.col)
-    return nil
-  consumeToken(p) # Consume the identifier token
-
-  let memberIdent = newIdentifier(p.l.currentToken.literal, p.l.currentToken.line, p.l.currentToken.col)
-
-  result = MemberAccessExpression(
-    targetObject: left,
-    member: memberIdent, # No need to cast
-=======
   return InitializerListExpr(values: values, line: line, col: col)
 
 # Added implementation for parseMemberAccessExpression
@@ -326,20 +197,11 @@ proc parseMemberAccessExpression(p: var Parser, left: Expression): Expression =
   return MemberAccessExpression(
     targetObject: left, # Use the renamed field
     member: Identifier(memberIdent), # Cast to Identifier
->>>>>>> 8f2d5ac (update nifcpp)
     isArrow: (operatorToken.kind == tkArrow),
     line: operatorToken.line, # Use operator token for line/col
     col: operatorToken.col
   )
 
-<<<<<<< HEAD
-proc parseIndexExpression*(p: var Parser, left: Expression): Expression = # Exported for registration
-  result = nil # ProveInit
-  let lbracketToken = p.l.currentToken # Should be tkLBracket
-  # DO NOT consumeToken(p) here. Infix logic already did.
-
-  consumeToken(p) # Consume the token *after* '[' to start parsing the index expression
-=======
 # Added implementation for parseIndexExpression
 proc parseIndexExpression(p: var Parser, left: Expression): Expression =
   # The '[' operator is the current token (p.l.currentToken)
@@ -347,7 +209,6 @@ proc parseIndexExpression(p: var Parser, left: Expression): Expression =
   let lbracketToken = p.l.currentToken # Should be tkLBracket
   # DO NOT consumeToken(p) here.
 
->>>>>>> 8f2d5ac (update nifcpp)
   let indexExpr = p.parseExpression(Precedence.Lowest)
   if indexExpr == nil:
     p.errors.add("Failed to parse index expression within '[]'")

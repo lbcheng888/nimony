@@ -11,12 +11,7 @@ import std/assertions
 include nifprelude
 
 import ".." / nimony / [nimony_model, programs, decls]
-<<<<<<< HEAD
-import hexer_context, iterinliner, desugar, xelim, duplifier, lifter, destroyer,
-  constparams, vtables
-=======
 import hexer_context, iterinliner, desugar, xelim, duplifier, lifter, destroyer, constparams, lambdalift, arcoptimizer, orcycle
->>>>>>> bf15d5a (update)
 
 proc publishHooks*(n: var Cursor) =
   var nested = 0
@@ -50,20 +45,6 @@ proc transform*(c: var EContext; n: Cursor; moduleSuffix: string): TokenBuf =
   # Apply lambda lifting - new step
   var n1 = lambdaLift(c0, moduleSuffix)
   endRead(n0)
-<<<<<<< HEAD
-
-  var c1 = beginRead(n1)
-  var nx = lowerExprs(c1, moduleSuffix)
-  endRead(n1)
-
-  var c2 = beginRead(nx)
-  let ctx = createLiftingCtx(moduleSuffix, c.bits)
-  var n2 = injectDups(c2, nx, ctx)
-  endRead(nx)
-
-  var c3 = beginRead(n2)
-  var n3 = lowerExprs(c3, moduleSuffix)
-=======
   
   var c1 = beginRead(n1)
   var n2 = desugar(c1, moduleSuffix)
@@ -72,7 +53,6 @@ proc transform*(c: var EContext; n: Cursor; moduleSuffix: string): TokenBuf =
   var c2 = beginRead(n2)
   let ctx = createLiftingCtx(moduleSuffix)
   var n3 = injectDups(c2, n2, ctx)
->>>>>>> bf15d5a (update)
   endRead(n2)
 
   var c3 = beginRead(n3)
@@ -110,31 +90,18 @@ proc transform*(c: var EContext; n: Cursor; moduleSuffix: string): TokenBuf =
 
   var needsXelimAgain = false
 
-<<<<<<< HEAD
-  var c5 = beginRead(n4)
-  var nwithvtables = transformVTables(c5, moduleSuffix, needsXelimAgain)
-  endRead(n4)
-=======
   var c5 = beginRead(n5)
   var n6 = injectConstParamDerefs(c5, c.bits div 8, needsXelimAgain)
   endRead(n5)
->>>>>>> bf15d5a (update)
 
   var c6 = beginRead(nwithvtables)
   var n5 = injectConstParamDerefs(c6, c.bits div 8, needsXelimAgain)
   endRead(nwithvtables)
 
   if needsXelimAgain:
-<<<<<<< HEAD
-    var c7 = beginRead(n5)
-    var n6 = lowerExprs(c7, moduleSuffix)
-    endRead(n5)
-    result = move n6
-=======
     var c6 = beginRead(n6)
     var n7 = lowerExprs(c6, moduleSuffix)
     endRead(n6)
     result = move n7
->>>>>>> bf15d5a (update)
   else:
     result = move n6
