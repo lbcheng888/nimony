@@ -1,0 +1,74 @@
+;; Test quasiquote, unquote, and unquote-splicing
+
+(defmacro let* (bindings body)
+  ;; Simple let* implementation using nested lets
+  ;; Example: (let* ((x 1) (y (+ x 1))) (+ x y))
+  ;; Expands to: (let ((x 1)) (let ((y (+ x 1))) (+ x y)))
+  (if (null? bindings)
+      ;; Base case: no bindings left, just insert the body
+      `(begin ,body) ;; Use quasiquote for the body part
+      ;; Recursive case: handle the first binding and recurse
+      (let ((first-binding (car bindings))
+            (rest-bindings (cdr bindings)))
+        ;; Use quasiquote to build the nested let structure
+        `(let (,(list first-binding)) ;; Unquote the single binding pair
+           ,(let* rest-bindings body) ;; Unquote the recursive expansion result
+         )
+      )
+   )
+)
+
+(defmacro assert-equal (a b)
+  ;; Use quasiquote to construct the if expression
+  ;; Quote the original expressions for the print message
+  `(if (= ,a ,b)
+       (print "Assertion passed:" ',a "=" ',b "->" ,a)
+       (print "Assertion FAILED:" ',a "!=" ',b "->" ,a "vs" ,b)
+   )
+)
+
+;; Test case 1: Simple let*
+(define result1
+  (let* ((x 10)
+         (y (+ x 5)))
+    (+ x y)))
+
+(assert-equal result1 25) ;; Expected: 10 + (10 + 5) = 25
+
+;; Test case 2: Splicing within quasiquote
+(defmacro make-list-macro (prefix . items)
+  ;; Creates a list starting with prefix, followed by items
+  ;; Example: (make-list-macro 'start 1 2 3) -> '(start 1 2 3)
+  `(list ',prefix ,@items) ;; Splice the items
+)
+
+(define result2 (make-list-macro 'data 10 20 30))
+(print "Result 2:" result2) ;; Expected: (data 10 20 30)
+
+;; Test case 3: Nested quasiquote/unquote (more complex)
+;; This tests if the levels are handled correctly during expansion
+(defmacro nested-qq (a b)
+  ;; Goal: expand to `(list 'outer (list 'inner '(unquote a)))
+  ;; The inner '(unquote a) should remain literal because of the inner quote
+  `(list 'outer (list 'inner '',a)) ;; Note the double quote (quote (unquote a))
+)
+
+(define result3 (nested-qq (+ 1 1) 3)) ;; Pass an expression for 'a'
+(print "Result 3:" result3) ;; Expected: (outer (inner (unquote (+ 1 1)))) - runtime eval should not happen on (+ 1 1)
+
+;; Test case 4: Unquoting inside nested quasiquote
+(defmacro nested-unquote (a b)
+  ;; Goal: expand to `(list 'outer (list 'inner (list 'level2 ,a)))
+  ;; The inner `(list 'level2 ,,a)` has a double unquote for 'a'
+  `(list 'outer (list 'inner `(list 'level2 ,,a)))
+)
+(define x 5)
+(define result4 (nested-unquote x 99))
+(print "Result 4:" result4) ;; Expected: (outer (inner (list level2 5)))
+
+
+;; --- Expected Output ---
+;; Assertion passed: result1 = 25 -> 25
+;; Result 2: (data 10 20 30)
+;; Result 3: (outer (inner (unquote (+ 1 1))))
+;; Result 4: (outer (inner (list level2 5)))

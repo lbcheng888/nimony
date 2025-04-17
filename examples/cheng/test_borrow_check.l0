@@ -1,0 +1,62 @@
+;; Test cases for basic borrow checking rules
+
+(print "--- Borrow Check Tests ---")
+
+;; --- Basic Access ---
+(define x 10)
+(print "x =" x) ;; OK: Accessing non-borrowed variable
+
+;; --- Reference Creation & Deref ---
+(define y 20)
+(define y-ref (ref y)) ;; OK: Create reference to non-borrowed y
+(print "y-ref deref =" (deref y-ref)) ;; OK: Dereference valid reference
+
+;; --- Test 1: Access while borrowed (Should Fail) ---
+(print "Test 1: Accessing 'y' while 'y-ref' exists (should fail borrow check)...")
+;; The current implementation only checks during 'ref' creation and symbol lookup.
+;; Accessing 'y' here *should* fail according to borrow rules, but the check
+;; might only trigger if we try to take *another* ref or if the lookup itself checks.
+;; Let's see if the symbol lookup check catches this.
+;; (print "y =" y) ;; Uncomment this line after confirming how checks are triggered
+
+;; --- Test 2: Double Mutable Borrow (Should Fail) ---
+(print "Test 2: Creating second ref 'y-ref2' while 'y-ref' exists (should fail borrow check)...")
+;; This check *should* be caught by the (ref y) operation.
+;; (define y-ref2 (ref y)) ;; Uncomment this line to test double borrow
+
+;; --- Test 3: Let Scope Lifetime (Should Fail) ---
+(print "Test 3: Returning ref to inner let variable (should fail lifetime check)...")
+(define z
+  (let ((inner 100))
+    (ref inner) ;; Create ref to inner
+    ;; Attempting to return ref to 'inner' which goes out of scope
+  )
+)
+;; (print "z deref =" (deref z)) ;; Uncomment if the above doesn't cause compile error
+
+;; --- Test 4: Lambda Scope Lifetime (Should Fail) ---
+(print "Test 4: Returning ref to lambda parameter (should fail lifetime check)...")
+(define make-ref
+  (lambda ((param int))
+    (ref param) ;; Attempting to return ref to 'param' which goes out of scope
+  )
+)
+(define bad-ref (make-ref 50))
+;; (print "bad-ref deref =" (deref bad-ref)) ;; Uncomment if the above doesn't cause compile error
+
+
+;; --- Test 5: Valid Ref Passing (Should Pass Type Check) ---
+(print "Test 5: Passing a valid reference to a function...")
+(define modify
+  (lambda ((r (ref int))) ;; Function expects a reference to int
+    ;; TODO: Need assignment/mutation to actually modify through ref
+    ;; For now, just dereference it.
+    (print "Inside modify, deref r =" (deref r))
+    #t ;; Return something
+  )
+)
+(define val 30)
+(define val-ref (ref val))
+(modify val-ref) ;; Pass the reference
+
+(print "--- Borrow Check Tests Complete ---")

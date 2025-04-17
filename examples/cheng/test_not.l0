@@ -1,0 +1,10 @@
+;; Test cases for the 'not' primitive
+
+(print "(not #t): " (not #t))       ;; Expected: #f
+(print "(not #f): " (not #f))       ;; Expected: #t
+(print "(not 1): " (not 1))         ;; Expected: #f
+(print "(not 0): " (not 0))         ;; Expected: #f
+(print "(not \"hello\"): " (not "hello")) ;; Expected: #f
+(print "(not '()): " (not '()))     ;; Expected: #f
+(print "(not (cons 1 2)): " (not (cons 1 2))) ;; Expected: #f
+(print "(not (lambda (x) x)): " (not (lambda (x) x))) ;; Expected: #f

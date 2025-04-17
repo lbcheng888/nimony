@@ -1,0 +1,92 @@
+;; Test cases for Cheng L0 Type Checker (including basic borrow checks)
+
+;; --- Basic Definitions and Types ---
+(define x 10)       ;; x: int
+(define y #t)       ;; y: bool
+(define z "hello") ;; z: string
+(define f 3.14)     ;; f: float
+(define n '())      ;; n: nil
+(define s 'sym)     ;; s: symbol
+
+;; --- Basic Usage ---
+(print x)
+(print y)
+(print z)
+(print f)
+(print n)
+(print s)
+
+;; --- If Expression ---
+(if y x 5)          ;; OK: condition bool, branches int/int -> int
+(if (< x 5) "a" "b") ;; OK: condition bool, branches string/string -> string
+;; (if x 1 2)          ;; TYPE ERROR: condition must be bool, got int
+;; (if y "a" 1)        ;; TYPE ERROR: branches have incompatible types string and int
+
+;; --- Lambda and Application ---
+(define add (lambda ((a int) (b int)) (+ a b))) ;; add: (-> (int int) int) - Assuming + returns number compatible with int
+(define greet (lambda ((name string)) (string-append "Hello, " name))) ;; greet: (-> (string) string)
+(define returns-ref (lambda ((p (ref int))) p)) ;; returns-ref: (-> ((ref int)) (ref int))
+
+(print (add 1 2))
+(print (greet "world"))
+;; (print (add 1 "a")) ;; TYPE ERROR: arg 2 expected int, got string
+;; (print (greet 123))   ;; TYPE ERROR: arg 1 expected string, got int
+;; (add 1)             ;; TYPE ERROR: too few arguments
+
+;; --- Let Expression ---
+(let ((a 5) (b "hi")) ;; a: int (scope L1), b: string (scope L1)
+  (print a)
+  (print b)
+  (+ a 10))          ;; OK: body returns int
+
+(let ((outer 100))     ;; outer: int (scope L2)
+  (let ((inner outer)) ;; inner: int (scope L3, copied from L2)
+    (+ inner 5)))    ;; OK: body returns int
+
+;; (let ((c y))         ;; c: bool (scope L4)
+;;   (+ c 1))          ;; TYPE ERROR: + expects number, got bool
+
+;; --- Quote ---
+(print 'abc)         ;; Type: symbol
+(print '(1 2 3))     ;; Type: pair (simplistic)
+(print '"string")    ;; Type: string
+(print '10)          ;; Type: int
+
+;; --- Ref and Deref ---
+(define count 1)      ;; count: int (global)
+(define count-ref (ref count)) ;; count-ref: (ref int) (origin global)
+(print (deref count-ref)) ;; OK: deref (ref int) -> int
+
+(let ((local-val 50)) ;; local-val: int (scope L5)
+  (define local-ref (ref local-val)) ;; local-ref: (ref int) (origin L5)
+  (print (deref local-ref)) ;; OK: deref (ref int) -> int
+  ;; (returns-ref local-ref) ;; LIFETIME ERROR: returning ref to local-val (origin L5) from lambda
+)
+
+;; --- Borrow Check Tests (Read-only checks in type-of) ---
+
+;; 1. Accessing borrowed variable (Should fail)
+(define bv 100)
+(define bv-ref (ref bv))
+;; (print bv) ;; BORROW ERROR: Cannot access bv because it is mutably borrowed (This check needs state)
+;; For now, type-of doesn't prevent this, but a stateful checker would.
+;; Let's test the check within type-of for ref creation:
+;; (define bv-ref2 (ref bv)) ;; BORROW ERROR: Cannot take reference of bv because it is already mutably borrowed. (This check IS in type-of)
+
+;; 2. Taking reference of non-symbol (Should fail)
+;; (define expr-ref (ref (+ 1 2))) ;; BORROW ERROR: Can only take reference of a symbol
+
+;; --- Expected Type Errors (Uncomment to test) ---
+;; (define unbound-var q) ;; TYPE ERROR: Unbound symbol q
+;; (+ 1 "hello")        ;; TYPE ERROR: + expects number, got string
+;; (deref 10)           ;; TYPE ERROR: deref requires a reference type, got int
+;; (if 1 2 3)           ;; TYPE ERROR: if condition must be bool, got int
+;; (add 1 2 3)          ;; TYPE ERROR: too many arguments for add
+
+;; --- Lifetime Check Test (Returning ref to local) ---
+(define (bad-lifetime)
+  (let ((x 5))
+    (ref x))) ;; LIFETIME ERROR: Let cannot return reference to internal binding x
+;; (bad-lifetime) ;; Calling this would trigger the error during type check
+
+(print "Type check test file finished processing (if no errors printed).")

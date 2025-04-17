@@ -1,0 +1,677 @@
+;; Cheng L0 Compiler (written in L0)
+;; Target: Compile L0 code to C code
+
+;; --- List Utilities ---
+
+;; Apply fn to each element of lst, return new list of results
+(define map
+  (lambda (fn lst)
+    (if (null? lst)
+        '()
+        (cons (fn (car lst)) (map fn (cdr lst))))))
+
+(define cadr (lambda (lst) (car (cdr lst))))
+(define caddr (lambda (lst) (car (cdr (cdr lst)))))
+(define cadddr (lambda (lst) (car (cdr (cdr (cdr lst))))))
+
+;; Basic list length
+(define length
+  (lambda (lst)
+    (if (null? lst)
+        0
+        (+ 1 (length (cdr lst))))))
+
+
+;; --- Parser Helper Functions ---
+
+;; Check if character code is whitespace
+(define is-whitespace?
+  (lambda (char-code)
+    (or (= char-code 32)  ;; space
+        (= char-code 10)  ;; newline
+        (= char-code 13)  ;; carriage return
+        (= char-code 9)))) ;; tab
+
+;; Check if character code is a digit '0' through '9'
+(define is-digit?
+  (lambda (char-code)
+    (and (>= char-code 48) ;; '0'
+         (<= char-code 57)))) ;; '9'
+
+;; Skip whitespace characters in input string starting from index `idx`
+;; Returns the index of the first non-whitespace character, or string length if end is reached.
+(define skip-whitespace
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (if (>= idx len)
+        idx ;; Reached end
+        (let ((char-code (string-ref input-string idx)))
+          (if (is-whitespace? char-code)
+              (skip-whitespace input-string (+ idx 1)) ;; Recurse
+              idx))))) ;; Found non-whitespace
+
+;; Check if character code is a valid start for a symbol
+;; (Example: letters, +, -, *, /, =, <, >, ?, !)
+(define is-symbol-start-char?
+  (lambda (char-code)
+    (or (and (>= char-code 65) (<= char-code 90))  ;; A-Z
+        (and (>= char-code 97) (<= char-code 122)) ;; a-z
+        (= char-code 43)  ;; +
+        (= char-code 45)  ;; - (but not followed by digit, handled by parse-integer check)
+        (= char-code 42)  ;; *
+        (= char-code 47)  ;; /
+        (= char-code 61)  ;; =
+        (= char-code 60)  ;; <
+        (= char-code 62)  ;; >
+        (= char-code 63)  ;; ?
+        (= char-code 33)  ;; !
+        ;; Add other allowed start chars here
+        )))
+
+;; Check if character code can be part of a symbol (after the start)
+(define is-symbol-char?
+  (lambda (char-code)
+    (or (is-symbol-start-char? char-code)
+        (is-digit? char-code))))
+
+;; Parses an integer starting at index `idx`.
+;; Returns a pair: (parsed-integer . next-index) or (#f . idx) on failure.
+(define parse-integer
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (define start-idx idx)
+    (define result 0)
+    (define negative #f)
+
+    ;; Handle optional sign
+    (if (< idx len)
+        (let ((sign-char (string-ref input-string idx)))
+          (if (= sign-char 45) ;; '-'
+              (begin
+                (set! negative #t)
+                (set! idx (+ idx 1)))
+              (if (= sign-char 43) ;; '+'
+                  (set! idx (+ idx 1))
+                  #f))) ;; No sign change needed
+        #f)
+
+    (define found-digit #f)
+    ;; Loop through digits
+    (define loop
+      (lambda (current-idx current-result)
+        (if (>= current-idx len)
+            (cons current-result current-idx) ;; End of string
+            (let ((char-code (string-ref input-string current-idx)))
+              (if (is-digit? char-code)
+                  (begin
+                    (set! found-digit #t)
+                    (loop (+ current-idx 1)
+                          (+ (* current-result 10) (- char-code 48)))) ;; Accumulate digit
+                  (cons current-result current-idx)))))) ;; Not a digit, end number
+
+    (let ((parse-result (loop idx 0)))
+      (if found-digit
+          (cons (if negative (- 0 (car parse-result)) (car parse-result))
+                (cdr parse-result))
+          (cons #f start-idx))))) ;; No digits found after optional sign
+
+;; Parses #t or #f starting at index `idx`.
+;; Returns a pair: (parsed-boolean . next-index) or (#f . idx) on failure.
+(define parse-boolean
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (if (>= (+ idx 2) len) ;; Need at least 2 chars (#t or #f)
+        (cons #f idx)
+        (let ((c1 (string-ref input-string idx))
+              (c2 (string-ref input-string (+ idx 1))))
+          (if (and (= c1 35) (= c2 116)) ;; #t
+              (cons #t (+ idx 2))
+              (if (and (= c1 35) (= c2 102)) ;; #f
+                  (cons #f (+ idx 2))
+                  (cons #f idx))))))) ;; Not a boolean
+
+;; Parses a symbol starting at index `idx`.
+;; Returns a pair: (parsed-symbol . next-index) or (#f . idx) on failure.
+(define parse-symbol
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (define start-idx idx)
+
+    (if (>= idx len)
+        (cons #f idx) ;; Cannot start symbol at EOF
+        (let ((first-char (string-ref input-string idx)))
+          (if (not (is-symbol-start-char? first-char))
+              (cons #f idx) ;; Not a valid symbol start
+              ;; Find the end of the symbol
+              (let ((find-end
+                     (lambda (current-idx)
+                       (if (>= current-idx len)
+                           current-idx ;; Symbol ends at EOF
+                           (let ((char-code (string-ref input-string current-idx)))
+                             (if (is-symbol-char? char-code)
+                                 (find-end (+ current-idx 1)) ;; Continue
+                                 current-idx)))))) ;; End of symbol found
+                   (end-idx (find-end (+ idx 1))))
+                ;; Extract the substring and convert to symbol
+                (let ((symbol-str (substring input-string start-idx end-idx)))
+                  (cons (string->symbol symbol-str) end-idx)))))))
+
+;; Parses a string literal starting at index `idx`.
+;; Returns a pair: (parsed-string . next-index) or (#f . idx) on failure.
+;; NOTE: This version does not handle escape sequences like \n, \t within the string yet.
+;; It only handles escaped quotes \\" and escaped backslashes \\\\.
+(define parse-string
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (define start-idx idx)
+
+    (if (or (>= idx len) (not (= (string-ref input-string idx) 34))) ;; Check for opening '"' (ASCII 34)
+        (cons #f start-idx) ;; Not a string
+        (let ((find-end
+               (lambda (current-idx escaped?)
+                 (if (>= current-idx len)
+                     (cons #f start-idx) ;; Unterminated string
+                     (let ((char-code (string-ref input-string current-idx)))
+                       (cond
+                         (escaped? ;; Previous char was '\'
+                          (find-end (+ current-idx 1) #f)) ;; Consume escaped char, reset flag
+                         ((= char-code 92) ;; '\'
+                          (find-end (+ current-idx 1) #t)) ;; Set escaped flag
+                         ((= char-code 34) ;; '"' - End of string
+                          (cons (+ current-idx 1) #t)) ;; Return index *after* quote, and success flag
+                         (else ;; Normal character
+                          (find-end (+ current-idx 1) #f))))))))
+             (result (find-end (+ idx 1) #f))) ;; Start search after opening quote
+
+          (if (not (cdr result)) ;; Check success flag
+              (cons 'parse-error-unterminated-string start-idx) ;; Unterminated string error
+              (let ((end-idx (car result))) ;; Index after closing quote
+                ;; Extract content between quotes (start_idx + 1 to end_idx - 1)
+                (let ((string-content (substring input-string (+ start-idx 1) (- end-idx 1))))
+                  (cons string-content end-idx))))))))
+
+
+;; Parses the elements of a list after the opening '('.
+;; Expects idx to be the index *after* the '('.
+;; Returns a pair: (parsed-list . next-index) or signals error (TODO)
+(define parse-list-elements
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (define current-idx (skip-whitespace input-string idx))
+
+    (if (>= current-idx len)
+        (cons 'parse-error-eof-in-list current-idx) ;; EOF inside list
+
+        (let ((char-code (string-ref input-string current-idx)))
+          (if (= char-code 41) 
+              (cons '() (+ current-idx 1)) 
+              ;; Else, parse the first element
+              (let ((first-element-result (parse-sexpr-helper input-string current-idx)))
+                (if (eq? (car first-element-result) 'parse-error) ;; Check for parse error
+                    first-element-result ;; Propagate error
+                    ;; Successfully parsed first element, now parse the rest
+                    (let ((first-element (car first-element-result))
+                          (idx-after-first (cdr first-element-result)))
+                      (let ((rest-elements-result (parse-list-elements input-string idx-after-first))) ;; Recursive call for the rest
+                         (if (eq? (car rest-elements-result) 'parse-error)
+                             rest-elements-result ;; Propagate error
+                             ;; Cons the first element onto the parsed rest
+                             (cons (cons first-element (car rest-elements-result))
+                                   (cdr rest-elements-result))))))))))))
+
+
+;; Parses a single S-expression.
+;; Returns a pair: (parsed-sexpr . next-index) or signals error (TODO)
+(define parse-sexpr-helper
+  (lambda (input-string idx)
+    (define len (string-length input-string))
+    (define current-idx (skip-whitespace input-string idx))
+
+    (if (>= current-idx len)
+        (cons 'parse-error-eof current-idx) ;; Unexpected end of file
+
+        (let ((char-code (string-ref input-string current-idx)))
+          (cond
+            ((= char-code 40) ;; '(' - Start list
+             (parse-list-elements input-string (+ current-idx 1))) ;; Call list parser, index is after '('
+
+            ((= char-code 41) ;; ')' - Unexpected closing paren
+             (cons 'parse-error-unexpected-paren current-idx))
+
+            ((= char-code 35) ;; '#' - Potential boolean
+             (parse-boolean input-string current-idx))
+
+            ((or (= char-code 43) (= char-code 45) (is-digit? char-code)) ;; Potential integer
+             (parse-integer input-string current-idx))
+
+            ((is-symbol-start-char? char-code) ;; Potential symbol
+             (parse-symbol input-string current-idx))
+
+            ((= char-code 34) ;; '"' - Start string
+             (parse-string input-string current-idx))
+
+            ((= char-code 39) ;; ''' - Quote shorthand
+             (let ((quoted-expr-result (parse-sexpr-helper input-string (+ current-idx 1)))) ;; Parse expression after quote
+               (if (eq? (car quoted-expr-result) 'parse-error)
+                   quoted-expr-result ;; Propagate error
+                   ;; Construct (quote <parsed-expr>)
+                   (let ((quoted-expr (car quoted-expr-result))
+                         (next-idx (cdr quoted-expr-result)))
+                     (cons (cons (string->symbol "quote") (cons quoted-expr '()))
+                           next-idx)))))
+
+            (else
+             (cons 'parse-error-unknown-char current-idx)))))))
+
+
+;; --- Codegen Helper Functions ---
+
+;; Escape characters in a string for C literal representation
+;; Input: string
+;; Output: string with \ and " escaped
+(define escape-c-string
+  (lambda (input-str)
+    (define len (string-length input-str))
+    (define loop
+      (lambda (idx result-str)
+        (if (>= idx len)
+            result-str ;; Base case: reached end
+            (let ((char-code (string-ref input-str idx)))
+              (let ((next-char-str
+                     (cond
+                       ((= char-code 34) "\\\"") ;; Escape "
+                       ((= char-code 92) "\\\\") ;; Escape \
+                       ;; TODO: Handle \n, \t etc. if needed by runtime representation
+                       (else (substring input-str idx (+ idx 1)))))) ;; Normal char
+                   (new-result (string-append result-str next-char-str)))
+                (loop (+ idx 1) new-result))))))
+    (loop 0 ""))) ;; Start loop with index 0 and empty result string
+
+;; Generate C code to construct a literal L0 value
+;; Assumes the C code will run in a context with 'arena' defined.
+(define codegen-literal
+  (lambda (literal-value)
+    (cond
+      ((integer? literal-value)
+       (string-append "l0_make_integer(arena, " (number->string literal-value) ")"))
+      ((boolean? literal-value)
+       (string-append "l0_make_boolean(arena, " (if literal-value "1" "0") ")"))
+      ((symbol? literal-value)
+       (string-append "l0_make_symbol(arena, \"" (escape-c-string (symbol->string literal-value)) "\")"))
+      ((string? literal-value)
+       (string-append "l0_make_string(arena, \"" (escape-c-string literal-value) "\")"))
+      ((null? literal-value) "L0_NIL")
+      ;; TODO: Handle quoted lists? (e.g., '(1 2)) -> l0_make_pair(arena, l0_make_integer(arena, 1), ...)
+      ;; For now, error or placeholder for non-atomic literals
+      (else "/* ERROR: Cannot generate literal for non-atomic value */")
+      )))
+
+;; Generate C code to construct an L0 list of evaluated arguments
+;; Input: list of argument expressions (e.g., (cdr '(+ 1 2))) -> '(1 2)
+;; Output: C code string like "l0_make_pair(arena, <arg1_code>, l0_make_pair(arena, <arg2_code>, L0_NIL))"
+(define codegen-arg-list
+  (lambda (arg-exprs)
+    (if (null? arg-exprs)
+        "L0_NIL" ;; Base case: empty list
+        (let ((first-arg-c (codegen-expr (car arg-exprs))) ;; Generate code for the first arg
+              (rest-args-c (codegen-arg-list (cdr arg-exprs)))) ;; Recursively generate for the rest
+          (string-append "l0_make_pair(arena, " first-arg-c ", " rest-args-c ")")))))
+
+
+;; Generate C code for a single L0 expression (AST node)
+(define codegen-expr
+  (lambda (expr)
+    (cond
+      ((integer? expr) (codegen-literal expr)) ;; Use codegen-literal for consistency
+      ((boolean? expr) (codegen-literal expr)) ;; Use codegen-literal
+      ((symbol? expr) ;; Generate code to lookup symbol in environment
+       (let ((sym-str (escape-c-string (symbol->string expr))))
+         ;; Assumes 'env' and 'arena' are available
+         (string-append "l0_env_lookup(env, l0_make_symbol(arena, \"" sym-str "\"))")))
+      ((string? expr) (codegen-literal expr)) ;; Use codegen-literal
+      ((null? expr) "L0_NIL") ;; Direct reference to the global nil constant
+      ((pair? expr)
+       (let ((op (car expr)))
+         (cond
+           ((eq? op 'quote) ;; Handle (quote ...)
+            (if (null? (cdr expr)) ;; Check arity (quote needs one arg)
+                 "/* ERROR: quote requires one argument */"
+                 (codegen-literal (cadr expr)))) ;; Generate code for the literal value
+
+           ((eq? op 'if) ;; Handle (if condition then else?)
+            (let ((len (length expr)))
+              (if (or (= len 3) (= len 4)) ;; Check arity (if needs 2 or 3 args)
+                  (let ((cond-expr (cadr expr))
+                        (then-expr (caddr expr))
+                        (else-expr (if (= len 4) (cadddr expr) #f))) ;; Get else or use #f marker
+                    ;; Recursively generate code for sub-expressions
+                    (let ((cond-c (codegen-expr cond-expr))
+                          (then-c (codegen-expr then-expr))
+                          (else-c (if else-expr (codegen-expr else-expr) "L0_NIL"))) ;; Generate L0_NIL if no else branch
+                      ;; Construct C ternary expression
+                      ;; Requires l0_is_truthy in C runtime (returns 1 or 0)
+                      (string-append "(l0_is_truthy(" cond-c ") ? (" then-c ") : (" else-c "))")))
+                  "/* ERROR: if requires 2 or 3 arguments */")))
+
+           ((eq? op 'define) ;; Handle (define symbol value)
+            (if (not (= (length expr) 3))
+                "/* ERROR: define requires exactly 2 arguments (symbol value) */"
+                (let ((sym (cadr expr))
+                      (val-expr (caddr expr)))
+                  (if (not (symbol? sym))
+                      "/* ERROR: define's first argument must be a symbol */"
+                      ;; Generate C code for the value expression
+                      (let ((val-c (codegen-expr val-expr))
+                            (sym-str (escape-c-string (symbol->string sym))))
+                        ;; Generate C code to define the symbol in the environment
+                        ;; Assumes 'env' and 'arena' are available.
+                        ;; Returns L0_NIL after definition.
+                        (string-append
+                         "(begin " ;; Use a hypothetical 'begin' or just sequence with comma
+                         "l0_env_define(env, l0_make_symbol(arena, \"" sym-str "\"), " val-c "), "
+                         "L0_NIL"
+                         ")" ))))))
+
+           ((eq? op 'lambda) ;; Handle (lambda (params...) body...)
+            (if (< (length expr) 3) ;; Must have params list and at least one body expr
+                "/* ERROR: lambda requires a parameter list and at least one body expression */"
+                (let ((params (cadr expr))
+                      (body-exprs (cddr expr)))
+                  ;; TODO: Validate params is a list of symbols
+                  (let ((effective-body
+                         (if (null? (cdr body-exprs)) ;; Only one body expression?
+                             (car body-exprs)
+                             (cons 'begin body-exprs)))) ;; Implicit begin for multiple body exprs
+                    ;; Generate C code for the quoted params list and body
+                    (let ((params-c (codegen-literal (cons 'quote (cons params '()))))
+                          (body-c (codegen-literal (cons 'quote (cons effective-body '())))))
+                      ;; Generate C code to create the closure object
+                      ;; Assumes 'env' and 'arena' are available.
+                      (string-append "l0_make_closure(arena, " params-c ", " body-c ", env)"))))))
+
+           ((eq? op 'begin) ;; Handle (begin expr1 expr2 ...)
+            (let ((body-exprs (cdr expr)))
+              (if (null? body-exprs)
+                  "L0_NIL" ;; (begin) evaluates to NIL (or should be an error?)
+                  ;; Generate code for each expression and join with comma operator
+                  (let ((codegen-body
+                         (lambda (exprs result-str)
+                           (if (null? exprs)
+                               result-str
+                               (let ((expr-c (codegen-expr (car exprs)))
+                                     (rest (cdr exprs)))
+                                 (codegen-body rest
+                                               (if (string=? result-str "") ;; First expression
+                                                   expr-c
+                                                   (string-append result-str ", " expr-c))))))))
+                       (body-c (codegen-body body-exprs "")))
+                    ;; Wrap in parentheses for C comma operator precedence
+                    (string-append "(" body-c ")")))))
+
+           ;; Handle primitive function calls (default case for lists)
+           (else
+            (let ((args (cdr expr)) ;; Get argument expressions
+                  (args-c (codegen-arg-list args))) ;; Generate C code for the argument list
+              ;; Map L0 operator symbol to C primitive function name
+              ;; TODO: Need a more robust mapping (e.g., hash table or better cond)
+              (let ((c-func-name
+                     (cond
+                       ((eq? op '+) "prim_add")
+                       ((eq? op '-) "prim_subtract")
+                       ((eq? op '*) "prim_multiply")
+                       ((eq? op '/) "prim_divide") ;; Assuming integer division for now
+                       ((eq? op '=) "prim_num_eq") ;; Numeric equality
+                       ((eq? op '<) "prim_num_lt")
+                       ((eq? op '>) "prim_num_gt")
+                       ((eq? op 'cons) "prim_cons")
+                       ((eq? op 'car) "prim_car")
+                       ((eq? op 'cdr) "prim_cdr")
+                       ((eq? op 'list) "prim_list") ;; Assumes a prim_list exists
+                       ((eq? op 'eq?) "prim_eq")   ;; General equality
+                       ((eq? op 'null?) "prim_is_null")
+                       ((eq? op 'pair?) "prim_is_pair")
+                       ((eq? op 'integer?) "prim_is_integer")
+                       ((eq? op 'boolean?) "prim_is_boolean")
+                       ((eq? op 'symbol?) "prim_is_symbol")
+                       ((eq? op 'string?) "prim_is_string")
+                       ;; Add mappings for other primitives...
+                       (else #f)))) ;; Unknown primitive
+                (if c-func-name
+                    ;; Construct the C function call
+                    ;; Assumes 'env' and 'arena' are available in the C context
+                    (string-append c-func-name "(" args-c ", env, arena)")
+                    ;; Handle unknown function call (could be user-defined later)
+                    (string-append "/* UNKNOWN FUNCTION CALL: " (symbol->string op) " */")))))
+           )))
+      (else
+       "/* UNKNOWN AST NODE */") ;; Error case
+      )))
+
+
+;; --- Core Compiler Functions ---
+
+;; Parses a sequence of S-expressions from the input string.
+;; Returns a list of parsed S-expressions.
+(define parse-program
+  (lambda (input-string)
+    (define len (string-length input-string))
+    (define parse-loop
+      (lambda (idx result-list)
+        (let ((current-idx (skip-whitespace input-string idx)))
+          (if (>= current-idx len)
+              ;; Reached end of input, reverse the accumulated list
+              (reverse result-list) ;; Reverse to maintain original order
+              ;; Else, parse the next expression
+              (let ((parse-result (parse-sexpr-helper input-string current-idx)))
+                (if (eq? (car parse-result) 'parse-error) ;; Check for parse error
+                    ;; Return the error immediately (e.g., as a special list)
+                    (list 'parse-error (cdr parse-result)) ;; Or handle error differently
+                    ;; No error, add parsed expression to list and continue
+                    (let ((parsed-expr (car parse-result))
+                          (next-idx (cdr parse-result)))
+                      (parse-loop next-idx (cons parsed-expr result-list)))))))))
+    (parse-loop 0 '()))) ;; Start parsing from index 0 with an empty list
+
+;; List reverse utility (needed for parse-program)
+(define reverse
+  (lambda (lst)
+    (define reverse-iter
+      (lambda (original accumulator)
+        (if (null? original)
+            accumulator
+            (reverse-iter (cdr original) (cons (car original) accumulator)))))
+    (reverse-iter lst '())))
+
+;; Main parse function - now calls parse-program
+(define parse
+  (lambda (input-string)
+    (parse-program input-string)
+    ))
+
+;; Generate C code for a list of top-level expressions
+(define codegen-program
+  (lambda (expr-list)
+    (define boilerplate-start
+"
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+#include \"l0_types.h\"
+#include \"l0_arena.h\"
+#include \"l0_env.h\"
+#include \"l0_primitives.h\"
+#include \"l0_eval.h\" // Needed for potential closure application if we add it
+
+// Forward declare the print helper if not in a header
+static int l0_value_to_string_recursive(L0_Value* value, char* buffer, size_t buf_size, L0_Arena* arena, int depth);
+
+int main(int argc, char *argv[]) {
+    (void)argc; // Unused for now
+    (void)argv; // Unused for now
+
+    L0_Arena* arena = l0_arena_create(1024 * 1024); // 1MB initial size
+    if (!arena) {
+        fprintf(stderr, \"Failed to create memory arena.\\n\");
+        return 1;
+    }
+
+    L0_Env* env = l0_env_create(arena, NULL); // Create global environment
+    if (!env) {
+        fprintf(stderr, \"Failed to create global environment.\\n\");
+        l0_arena_destroy(arena);
+        return 1;
+    }
+
+    if (!l0_register_primitives(env, arena)) {
+         fprintf(stderr, \"Failed to register primitives.\\n\");
+         l0_arena_destroy(arena);
+         return 1;
+    }
+
+    L0_Value* last_result = L0_NIL; // Initialize last result to NIL
+    (void)last_result; // Avoid unused variable warning if expr_list is empty
+")
+
+    (define boilerplate-end
+"
+    // Optional: Print the result of the last expression
+    // char print_buffer[1024];
+    // if (last_result != L0_NIL) { // Only print if there was a result
+    //    l0_value_to_string_recursive(last_result, print_buffer, sizeof(print_buffer), arena, 0);
+    //    printf(\"Result: %s\\n\", print_buffer);
+    // }
+
+    l0_arena_destroy(arena);
+    return 0;
+}
+
+// Basic implementation of the print helper (might need refinement)
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#define PRINT_BUFFER_SIZE 1024
+static int l0_value_to_string_recursive(L0_Value* value, char* buffer, size_t buf_size, L0_Arena* arena, int depth) {
+    if (depth > 10) return snprintf(buffer, buf_size, \"...\");
+    if (!value) return snprintf(buffer, buf_size, \"<NULL_VALUE>\");
+    int written = 0;
+    switch (value->type) {
+        case L0_TYPE_NIL: written = snprintf(buffer, buf_size, \"()\"); break;
+        case L0_TYPE_BOOLEAN: written = snprintf(buffer, buf_size, \"%s\", value->data.boolean ? \"#t\" : \"#f\"); break;
+        case L0_TYPE_INTEGER: written = snprintf(buffer, buf_size, \"%ld\", value->data.integer); break;
+        case L0_TYPE_SYMBOL: written = snprintf(buffer, buf_size, \"%s\", value->data.symbol); break;
+        case L0_TYPE_STRING: {
+            written = snprintf(buffer, buf_size, \"\\\"\");
+            const char* s = value->data.string;
+            size_t remaining = buf_size - written - 1;
+            while (*s && remaining > 1) {
+                char c = *s++; int w = 0;
+                if (c == '\\\"' || c == '\\\\') { if (remaining >= 2) { buffer[written++] = '\\\\'; buffer[written++] = c; remaining -= 2; } else break; }
+                else if (c == '\\n') { if (remaining >= 2) { buffer[written++] = '\\\\'; buffer[written++] = 'n'; remaining -= 2; } else break; }
+                else if (c == '\\t') { if (remaining >= 2) { buffer[written++] = '\\\\'; buffer[written++] = 't'; remaining -= 2; } else break; }
+                else if (isprint((unsigned char)c)) { if (remaining >= 1) { buffer[written++] = c; remaining--; } else break; }
+                else { if (remaining >= 4) { snprintf(buffer + written, 5, \"\\\\x%02x\", (unsigned char)c); written += 4; remaining -=4; } else break; }
+            }
+            if (remaining >= 1) buffer[written++] = '\\\"'; buffer[written] = '\\0'; break;
+        }
+        case L0_TYPE_PAIR: {
+            written = snprintf(buffer, buf_size, \"(\"); L0_Value* current = value; bool first = true;
+            while (l0_is_pair(current)) {
+                 if (!first) { if (written < buf_size - 1) buffer[written++] = ' '; else break; }
+                 int w = l0_value_to_string_recursive(current->data.pair.car, buffer + written, buf_size - written, arena, depth + 1);
+                 if (w < 0 || written + w >= buf_size) { written = -1; break; } written += w; current = current->data.pair.cdr; first = false;
+            }
+            if (written < 0) break;
+            if (!l0_is_nil(current)) {
+                 if (written < buf_size - 3) { buffer[written++] = ' '; buffer[written++] = '.'; buffer[written++] = ' '; } else { written = -1; break; }
+                 int w = l0_value_to_string_recursive(current, buffer + written, buf_size - written, arena, depth + 1);
+                 if (w < 0 || written + w >= buf_size) { written = -1; break; } written += w;
+            }
+             if (written < 0) break;
+            if (written < buf_size - 1) buffer[written++] = ')'; else written = -1; buffer[written] = '\\0'; break;
+        }
+        case L0_TYPE_PRIMITIVE: written = snprintf(buffer, buf_size, \"<primitive:%p>\", (void*)value->data.primitive.func); break;
+        case L0_TYPE_CLOSURE: written = snprintf(buffer, buf_size, \"<closure:%p>\", (void*)value); break;
+        default: written = snprintf(buffer, buf_size, \"<unknown_type:%d>\", value->type); break;
+    }
+    return (written >= 0 && (size_t)written < buf_size) ? written : -1;
+}
+")
+
+    ;; Generate code for the body expressions
+    (define codegen-body
+      (lambda (exprs result-str)
+        (if (null? exprs)
+            result-str
+            (let ((expr-c (codegen-expr (car exprs)))
+                  (rest (cdr exprs)))
+              (codegen-body rest
+                            (string-append result-str "    last_result = " expr-c ";\n"))))))
+
+    (let ((body-c (codegen-body expr-list "")))
+      (string-append boilerplate-start "\n" body-c "\n" boilerplate-end))
+    ))
+
+;; Main codegen function - now takes a list of expressions
+(define codegen
+  (lambda (ast-list)
+    (codegen-program ast-list)
+    ))
+
+;; Compiles an input L0 file to an output C file.
+;; Returns #t on success, #f on failure.
+(define compile-file
+  (lambda (input-filename output-filename)
+    (define file-content (read-file input-filename)) ;; Assumes read-file primitive
+
+    (if (not (string? file-content)) ;; read-file returns #f on error
+        (begin
+          (print "Error: Could not read input file: " input-filename) ;; Assumes print primitive
+          #f) ;; Indicate failure
+        ;; File read successfully, proceed with parsing
+        (let ((ast-list (parse file-content)))
+          (if (and (pair? ast-list) (eq? (car ast-list) 'parse-error))
+              (begin
+                (print "Error: Parse error in file: " input-filename " at index " (cadr ast-list))
+                #f) ;; Indicate parse failure
+              ;; Parsed successfully, proceed with codegen
+              (let ((c-code (codegen ast-list)))
+                ;; Write the generated C code to the output file
+                (if (write-file output-filename c-code) ;; Assumes write-file primitive
+                    #t ;; Indicate success
+                    (begin
+                      (print "Error: Could not write output file: " output-filename)
+                      #f))))))))) ;; Indicate write failure
+
+;; --- Entry Point ---
+
+;; --- Entry Point ---
+
+;; Main entry point for the compiler.
+;; Expects command line arguments: (compiler-name input.l0 output.c)
+(define main
+  (lambda (args)
+    (if (not (= (length args) 3))
+        (begin
+          (print "Usage: <compiler> <input.l0> <output.c>") ;; Assumes print primitive
+          #f) ;; Indicate failure due to wrong args
+        (let ((input-file (cadr args))
+              (output-file (caddr args)))
+          (if (compile-file input-file output-file)
+              (begin
+                (print "Compilation successful: " input-file " -> " output-file)
+                #t) ;; Indicate overall success
+              (begin
+                (print "Compilation failed.")
+                #f))))) ;; Indicate overall failure
+    ))
+
+;; --- Necessary Primitives (Assumed to be provided by C runtime eventually) ---
+;; - read-file (filename) -> string
+;; - write-file (filename string) -> boolean
+;; - print (...) -> void/nil
+;; - string primitives (e.g., string-append, char-at, substring)
+;; - length (list) -> integer (already have?)
+;; - cadr, caddr (list accessors - can be built from car/cdr)
+
+;; Example usage (conceptual):
+;; (main '("compiler_l0.cheng" "input.l0" "output.c"))

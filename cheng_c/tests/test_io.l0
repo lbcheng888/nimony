@@ -1,0 +1,28 @@
+;; Test file for read-file and write-file primitives
+
+(define test-filename "cheng_c/tests/io_output_test.txt")
+(define test-content "Hello from L0 file IO test!")
+
+(print "Attempting to write to:" test-filename)
+(define write-result (write-file test-filename test-content))
+
+(if write-result
+    (begin
+        (print "Write successful. Attempting to read back...")
+        (define read-content (read-file test-filename))
+        (if (boolean? read-content) ;; #f indicates error
+            (print "Error reading file back.")
+            (begin
+                (print "Read successful. Content:")
+                (print read-content)
+                ;; Optional: Compare read-content with test-content if '=' works on strings
+                ;; (if (= read-content test-content)
+                ;;     (print "Content matches!")
+                ;;     (print "Error: Content mismatch!"))
+            )
+        )
+    )
+    (print "Error writing file.")
+)
+
+(print "IO Test finished.")

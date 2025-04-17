@@ -1,0 +1,20 @@
+;; Test file for Stage 7 macro expansion
+
+(print "--- Stage 7 Macro Test ---")
+
+;; Define a simple 'when' macro
+(defmacro when (condition body)
+  ;; Transformer uses list construction (quasiquote not yet implemented)
+  (list 'if condition body #f) ;; Expands to (if condition body #f)
+)
+
+;; Use the 'when' macro
+(define x 10)
+
+(when (= x 10)
+  (print "Condition was true! (x=10)"))
+
+(when (> x 100) ;; This condition is false
+  (print "This should not print! (x > 100)"))
+
+(print "--- Stage 7 Macro Test End ---")

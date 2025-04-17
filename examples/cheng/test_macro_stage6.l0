@@ -1,0 +1,19 @@
+;; Test file for defmacro using Stage 6 compiler
+
+;; Define the 'when' macro (copied from compiler.l0 for self-containment test)
+(defmacro when (condition body)
+  (list 'if condition body #f)) ;; Expands to (if condition body #f)
+
+;; Use the 'when' macro
+(define x 10)
+(when (> x 5) (print "x is greater than 5")) ;; Should print
+(when (< x 5) (print "x is less than 5"))    ;; Should not print
+
+;; Test with a false condition
+(when #f (print "This should not print"))
+
+;; Test returning a value from the body
+(define y (when (= x 10) 100)) ;; y should become 100
+(print "y is:" y)
+
+'macro-test-complete ;; Return a symbol to indicate completion

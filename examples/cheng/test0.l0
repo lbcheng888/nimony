@@ -1,0 +1,4 @@
+;; Simple L0 test program
+(define x 10)
+(define y 5)
+(+ x y)

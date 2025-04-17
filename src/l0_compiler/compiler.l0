@@ -1,0 +1,1186 @@
+;; -------------------------------------
+;; L0 Compiler written in L0 (Stage 1) - SIMPLIFIED FOR DEBUGGING
+;; -------------------------------------
+;; Input: L0 source file path (string)
+;; Output: C source file path (string)
+;; Effect: Reads L0 source, parses it, generates C code, writes to output file.
+;; -------------------------------------
+
+;; --- Placeholder Globals (Commented out or simplified) ---
+;; (define *macro-table* '()) ;; Simplified - Macros disabled
+;; (define *c-declarations* '()) ;; Simplified - FFI disabled
+;; (define *c-exports-code* '()) ;; Simplified - FFI disabled
+;; (define *next-scope-id* 0) ;; Simplified - Type/Scope disabled
+;; (define *global-scope-id* 'global) ;; Simplified - Type/Scope disabled
+
+;; --- Basic Utilities (Keep necessary ones) ---
+(define (length items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+
+(define (map proc items)
+  (if (null? items)
+      '()
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+
+(define (string-append s1 s2)
+  ;; Assuming a primitive string-append exists
+  (primitive-string-append s1 s2)
+)
+
+(define (string-join strings sep)
+  (if (null? strings)
+      ""
+      (if (null? (cdr strings))
+          (car strings)
+          (string-append (car strings) sep (string-join (cdr strings) sep)))))
+
+(define (number->string n)
+  ;; Assuming a primitive number->string exists
+  (primitive-number->string n)
+)
+
+;; --- Helper for Error Formatting (Simplified) ---
+(define (format-error error-type filename)
+  (define base-message
+    (cond ((= error-type 'read-error) (string-append "Error reading file: " filename))
+          ((= error-type 'parse-error) (string-append "Error parsing file: " filename))
+          ((= error-type 'codegen-error) (string-append "Error generating code for: " filename))
+          ((= error-type 'write-error) (string-append "Error writing output file: " filename))
+          ((= error-type 'arg-type-error) "Error: Command line arguments must be strings.")
+          ((= error-type 'arg-count-error) "Error: Expected exactly two command line arguments.")
+          (else "Unknown error.")))
+
+  ;; Simplified: Removed get-last-error-message and location info for now
+  base-message
+)
+
+
+;; --- Main Compiler Function (Simplified) ---
+(define (compile-l0 input-filename output-filename)
+  (print "Reading input file: " input-filename)
+  (define source-content (read-file input-filename))
+
+  (if (boolean? source-content) ;; read-file returns #f on error
+      (begin
+        (print (format-error 'read-error input-filename))
+        'read-error ;; Return error symbol
+      )
+      (begin ;; Start of the 'else' block for the outer 'if'
+        (print "Parsing L0 code...")
+        (define ast (parse-string source-content)) ;; Call the parse-string primitive
+
+        (if (boolean? ast) ;; parse-string returns #f on error
+            (begin
+              (print (format-error 'parse-error input-filename))
+              'parse-error ;; Return error symbol
+            )
+            ;; --- Parsing succeeded, continue to codegen ---
+            (begin
+              (print "Parsing successful.")
+              ;; (print ast) ;; Optional: print parsed AST
+
+              ;; --- SKIPPED Pre-Codegen Pass (Macros, FFI processing) ---
+              (print "Skipping Macro/FFI processing.")
+              (define expanded-base-ast ast) ;; Use original AST directly
+
+              ;; --- SKIPPED Type Checking Pass ---
+              (print "Skipping Type Checking pass.")
+              (define type-check-ok #t) ;; Assume OK
+
+              (if (not type-check-ok)
+                  (begin
+                    (print "Type checking failed (should not happen as it's skipped).")
+                    'type-check-failed
+                  )
+                  ;; --- Type Checking OK (or skipped) ---
+                  (begin
+                    (print "Generating C code...")
+                    (define c-code (codegen-program expanded-base-ast)) ;; Call the codegen primitive
+
+                    (if (boolean? c-code) ;; codegen-program returns #f on error
+                        (begin
+                          (print (format-error 'codegen-error input-filename))
+                          'codegen-error
+                        )
+                        ;; --- Codegen OK, write file ---
+                        (begin
+                          (print "Codegen successful. Writing to file: " output-filename)
+                          (define write-ok (write-file output-filename c-code))
+                          (if write-ok
+                              (begin (print "Compilation successful.") 'success)
+                              (begin (print (format-error 'write-error output-filename)) 'write-error)
+                          )
+                        )
+                    )
+                  ) ;; Closes the 'begin' for type checking success/skip
+              ) ;; Closes the 'if (not type-check-ok)'
+            ) ;; Closes the 'begin' for parsing success
+        ) ;; Closes the 'if (boolean? ast)'
+      ) ;; <<< This closes the 'else' block for the outer 'if (boolean? source-content)'
+  ) ;; <<< This closes the 'define compile-l0'
+)
+
+;; --- Entry Point ---
+(define main
+  (lambda ()
+    (print "L0 Compiler (Stage 1 - SIMPLIFIED) starting...")
+
+    (define args (command-line-args))
+    (print "Command line args received:" args)
+
+    ;; Check if we got exactly two arguments
+    (define result 'init-error) ;; Default error if args are wrong
+
+    (if (and (pair? args)           ;; Must have at least one arg pair
+             (pair? (cdr args))     ;; Must have at least two arg pairs
+             (null? (cdr (cdr args)))) ;; Must end after the second arg
+        (begin
+          (define input-filename (car args))
+          (define output-filename (car (cdr args))) ;; cadr
+
+          ;; Basic type check (assuming args are strings)
+          (if (and (string? input-filename) (string? output-filename))
+              (set! result (compile-l0 input-filename output-filename)) ;; Capture result
+              (begin
+                 (print (format-error 'arg-type-error #f)) ;; Pass #f as filename placeholder
+                 (set! result 'arg-type-error)
+              )
+          )
+        )
+        ;; Else: Incorrect number of arguments
+        (begin
+           (print (format-error 'arg-count-error #f)) ;; Pass #f as filename placeholder
+           (set! result 'arg-count-error)
+        )
+    )
+    (print "L0 Compiler finished with result: " result)
+    result ;; Return the actual result symbol
+  )
+)
+
+;; Run the main function
+(main)
+(define (is-function-type? type-expr)
+  (and (pair? type-expr) (= (car type-expr) '->)))
+
+;; Extracts argument *types* from a function type expression '(-> (type1 type2 ...) ret)'
+(define (get-arg-types func-type-expr)
+  (if (and (is-function-type? func-type-expr) (pair? (cdr func-type-expr)) (list? (cadr func-type-expr)))
+      (cadr func-type-expr) ;; Returns the list of types: (type1 type2 ...)
+      (begin (print "Type Error: Invalid function type expression for get-arg-types:" func-type-expr) #f))) ;; Return #f on error
+
+;; Extracts return type from a function type expression
+(define (get-return-type func-type-expr)
+   (if (and (is-function-type? func-type-expr) (pair? (cdr func-type-expr)) (pair? (cddr func-type-expr)))
+       (caddr func-type-expr)
+       (begin (print "Type Error: Invalid function type expression for get-return-type:" func-type-expr) #f))) ;; Return #f on error
+
+;; Checks if type1 is compatible with (can be used where) type2 is expected.
+;; Asymmetric: types-compatible?(int, number) is true, types-compatible?(number, int) is false.
+;; TODO: Implement proper subtyping/unification if needed.
+(define (types-compatible? type1 type2)
+   (cond
+     ;; --- Exact Match ---
+     ((= type1 type2) #t)
+
+     ;; --- Any (as expected type) ---
+     ((= type2 'any) #t) ;; Anything is compatible with 'any'
+
+     ;; --- Number (as expected type) ---
+     ;; int or float is compatible with number
+     ((= type2 'number) (or (= type1 'int) (= type1 'float)))
+
+     ;; --- Reference Types: (ref T1) vs (ref T2) ---
+     ((and (pair? type1) (= (car type1) 'ref)
+           (pair? type2) (= (car type2) 'ref))
+      ;; (ref T1) is compatible with (ref T2) if T1 is compatible with T2
+      ;; OR if T2 is (ref any) (allowing (ref int) where (ref any) is expected)
+      (let ((inner1 (cadr type1)) (inner2 (cadr type2)))
+         (or (= inner2 'any) (types-compatible? inner1 inner2))
+      ))
+
+     ;; --- Union Types: T1 vs (or T2 T3 ...) ---
+     ((and (pair? type2) (= (car type2) 'or))
+      ;; type1 is compatible with (or T2 T3...) if type1 is compatible with *any* of T2, T3...
+      (let ((options (cdr type2)))
+         (any? (lambda (option-type) (types-compatible? type1 option-type)) options)
+      ))
+
+     ;; --- Union Types: (or T1 T2 ...) vs T3 ---
+     ;; This direction is less common. For now, only allow compatibility if T3 is 'any'.
+     ;; A stricter check might require *all* options T1, T2... to be compatible with T3.
+     ((and (pair? type1) (= (car type1) 'or))
+       (= type2 'any)) ;; Only compatible if expected type is 'any'
+
+     ;; --- Default: Not Compatible ---
+     (else #f)
+   )
+)
+
+;; Checks if a list of actual argument types is compatible with expected parameter types.
+;; Handles variadic functions indicated by '...' in expected types.
+(define (check-args expected actual op-name)
+  (define (check-iter expected-rest actual-rest)
+    (cond
+      ;; Both lists exhausted: Success
+      ((and (null? expected-rest) (null? actual-rest)) #t)
+
+      ;; Expected more args, but none provided: Fail
+      ((and (not (null? expected-rest)) (null? actual-rest))
+       (if (= (car expected-rest) '...) ;; Check if expecting variadic
+           #t ;; OK if variadic and no more args provided
+           (begin (print "Type Error (Application): Too few arguments for" op-name) #f)))
+
+      ;; Provided more args, but none expected: Fail
+      ((and (null? expected-rest) (not (null? actual-rest)))
+       (begin (print "Type Error (Application): Too many arguments for" op-name) #f))
+
+      ;; Variadic expected: Check remaining actual args against the variadic type
+      ((= (car expected-rest) '...)
+       (if (null? (cdr expected-rest)) ;; Ensure '...' is the last expected type
+           (let ((variadic-type (cadr expected-rest))) ;; Get the type before '...'
+             (define (check-all-variadic actuals v-type)
+               (if (null? actuals) #t ;; All checked
+                   (if (types-compatible? (car actuals) v-type)
+                       (check-all-variadic (cdr actuals) v-type)
+                       (begin (print "Type Error (Application): Variadic argument type mismatch for" op-name ". Expected compatible with" v-type "got" (car actuals)) #f))))
+             (check-all-variadic actual-rest variadic-type))
+           (begin (print "Type Error (Definition): '...' must be the last parameter type for" op-name) #f))) ;; Error in function definition
+
+      ;; Regular argument check: Check compatibility and recurse
+      ((types-compatible? (car actual-rest) (car expected-rest))
+       (check-iter (cdr expected-rest) (cdr actual-rest)))
+
+      ;; Type mismatch
+      (else
+       (print "Type Error (Application): Argument type mismatch for" op-name
+              ". Expected compatible with" (car expected-rest) "got" (car actual-rest))
+       #f)
+)
+  )
+  ;; Start the check
+  (check-iter expected actual)
+)
+
+
+;; --- Simple Macro Example (Now using quasiquote) ---
+;; (defmacro when (condition body)
+;;   ;; Use quasiquote for the expansion template
+;;   `(if ,condition ,body #f)
+;; )
+
+;; Checks if predicate is true for any item in the list
+(define (any? pred items)
+   (if (null? items)
+       #f
+       (if (pred (car items))
+           #t
+           (any? pred (cdr items)))))
+
+;; Takes the first n elements of a list
+(define (take lst n)
+  (if (or (= n 0) (null? lst))
+      '()
+      (cons (car lst) (take (cdr lst) (- n 1)))))
+
+;; Drops the first n elements of a list
+(define (drop lst n)
+  (if (or (= n 0) (null? lst))
+      lst
+      (drop (cdr lst) (- n 1))))
+
+;; --- Macro Expansion Implementation ---
+
+;; Adds a macro definition to the table
+;; Note: This uses mutation! Consider alternatives if purity is desired later.
+(define (add-macro! name transformer table)
+  (set! *macro-table* (cons (cons name transformer) table)) ;; Prepend to global table
+  *macro-table* ;; Return updated table (though we modified global)
+)
+
+;; Checks if a form is a defmacro definition
+(define (is-defmacro? form)
+  (and (pair? form)
+       (= (car form) 'defmacro)))
+
+;; Extracts info and creates transformer lambda *expression* from a defmacro form
+;; Returns a pair: (macro-name . (lambda (params...) body...))
+(define (process-defmacro form)
+  (if (or (not (pair? form)) (< (length form) 4)) ;; Check form structure: (defmacro name (params...) body...)
+      (begin
+        (print "Error: Invalid defmacro form:" form)
+        #f ;; Indicate error
+      )
+      (let ((macro-name (cadr form))
+            (macro-params (caddr form))
+            (macro-body (cdddr form))) ;; Use cdddr to get the list of body forms
+        (if (not (symbol? macro-name))
+            (begin (print "Error: Macro name must be a symbol:" macro-name) #f)
+            (if (not (list? macro-params)) ;; Check if params is a list (can be empty)
+                (begin (print "Error: Macro parameters must be a list:" macro-params) #f)
+                ;; Construct the transformer lambda expression
+                (let ((transformer-lambda (list 'lambda macro-params macro-body))) ;; Body is already a list of forms
+                  (cons macro-name transformer-lambda)
+                )
+            )
+        )
+      )
+  )
+)
+
+
+;; Basic Macro Expansion
+;; Handles quasiquote -> quote transformation as a temporary fix.
+;; TODO: Implement proper macro expansion including quasiquote/unquote.
+(define (macro-expand form table)
+  (cond
+    ;; Check if it's a quasiquote form: `(quasiquote x)`
+    ((and (pair? form) (= (car form) 'quasiquote))
+     (if (and (pair? (cdr form)) (null? (cddr form))) ;; Ensure it has exactly one argument
+         (begin
+           (print "[TEMP] macro-expand: Transforming quasiquote to quote for:" form)
+           (list 'quote (cadr form)) ;; Transform to (quote x)
+         )
+         (begin
+           (print "Error: Invalid quasiquote form (requires one argument):" form)
+           form ;; Return original form on error
+         )
+     ))
+    ;; TODO: Add checks for other macros defined in 'table' here
+    ;; (else (lookup macro in table and apply transformer))
+
+    ;; Default: Return form unchanged if not quasiquote or other known macro
+    (else
+     ;; (print "[TEMP] macro-expand: Form is not quasiquote, returning unchanged:" form) ;; Optional debug
+     form)
+  )
+)
+
+
+;; --- String Utilities ---
+(define (length items)
+  (if (null? items)
+      0
+      (+ 1 (length (cdr items)))))
+
+(define (map proc items)
+  (if (null? items)
+      '()
+      (cons (proc (car items))
+            (map proc (cdr items)))))
+
+(define (filter pred items)
+  (if (null? items)
+      '()
+      (let ((head (car items))
+            (tail (cdr items)))
+        (if (pred head)
+            (cons head (filter pred tail))
+            (filter pred tail)))))
+
+
+;; --- Type Info Helper ---
+;; Checks if a type info tuple represents a reference type
+(define (is-ref-type-info? type-info)
+  (and (pair? type-info) ;; Must be (type . scope-id . borrow-status)
+       (let ((type (car type-info)))
+         (and (pair? type) (= (car type) 'ref))))) ;; Inner type must be (ref T)
+
+;; Extracts the inner type T from a reference type info ((ref T) . scope-id . borrow-status)
+(define (get-inner-ref-type type-info)
+   (if (is-ref-type-info? type-info)
+       (cadr (car type-info)) ;; Get T from ((ref T) . scope . borrow)
+       #f)) ;; Should not happen if called after is-ref-type-info?
+
+;; Main type checking/inference function
+;; Returns the inferred type info tuple '(type . scope-id . borrow-status)' or an error symbol 'type-error
+;; Note: borrow-status in the returned tuple usually indicates the status *after* the expression,
+;;       but for simple lookups, it reflects the current status.
+(define (type-of expr tenv current-scope-id)
+  (print "[DEBUG TOF] Checking expr:" expr) ;; <<< ADDED DEBUG PRINT
+  ;; (print "[Type Check] Expr:" expr " Scope:" current-scope-id) ;; Verbose
+  (cond
+    ;; --- Atoms ---
+    ;; Literals are not borrowed and originate from global scope.
+    ((integer? expr) (list 'int *global-scope-id* 'not-borrowed))
+    ((boolean? expr) (list 'bool *global-scope-id* 'not-borrowed))
+    ((string? expr) (list 'string *global-scope-id* 'not-borrowed))
+    ((float? expr) (list 'float *global-scope-id* 'not-borrowed))
+    ((null? expr) (list 'nil *global-scope-id* 'not-borrowed)) ;; Type of empty list is 'nil
+
+    ;; --- Symbol Lookup ---
+    ((symbol? expr)
+     (let ((found-info (lookup-type-info expr tenv))) ;; Returns (type . scope-id . borrow-status) or #f
+       (cond
+         ((not found-info)
+          (begin (print "Type Error: Unbound symbol:" expr " in scope:" current-scope-id) 'type-error))
+         ;; --- BORROW CHECK (Access) ---
+         ((= (get-borrow-status-from-info found-info) 'borrowed-mutably)
+          (begin (print "Borrow Error: Cannot access symbol '" expr "' because it is mutably borrowed.") 'type-error))
+         ;; --- OK ---
+         (else found-info) ;; Return the full tuple (type . scope . borrow-status)
+       )
+     ))
+
+    ;; --- Pairs (Special Forms & Application) ---
+    ((pair? expr)
+     (let ((op (car expr))
+           (args (cdr expr)))
+       (cond
+         ;; --- Special Forms ---
+         ((= op 'quote)
+          ;; Type of (quote x) is the type of the literal x, not borrowed, global scope.
+          (if (and (pair? args) (null? (cdr args)))
+              (list (literal-type-of (car args)) *global-scope-id* 'not-borrowed)
+              (begin (print "Type Error: quote expects one argument.") 'type-error))
+          )
+         ((= op 'quasiquote) ;; <<< ADDED QUASIQUOTE CASE
+          ;; Type of `x` is the type of the literal x, similar to 'quote
+          (if (and (pair? args) (null? (cdr args)))
+              (list (literal-type-of (car args)) *global-scope-id* 'not-borrowed)
+              (begin (print "Type Error: quasiquote expects one argument.") 'type-error))
+         )
+         ((= op 'if)
+          ;; (if condition true-branch false-branch)
+          ;; Result borrow status depends on the chosen branch.
+          (if (or (not (pair? args)) (not (pair? (cdr args))) (not (pair? (cddr args))) (not (null? (cdddr args))))
+              (begin (print "Type Error: 'if' requires 3 arguments.") 'type-error)
+              (let ((cond-info (type-of (car args) tenv current-scope-id))
+                    (true-info (type-of (cadr args) tenv current-scope-id))
+                    (false-info (type-of (caddr args) tenv current-scope-id)))
+                 (let ((cond-type (get-type-from-info cond-info))
+                       (true-type (get-type-from-info true-info))
+                       (false-type (get-type-from-info false-info)))
+                    (cond
+                      ;; Propagate errors first
+                      ((= cond-info 'type-error) 'type-error)
+                      ((= true-info 'type-error) 'type-error)
+                      ((= false-info 'type-error) 'type-error)
+                      ;; Check condition type
+                      ((not (= cond-type 'bool))
+                       (begin (print "Type Error: 'if' condition must be boolean, got:" cond-type) 'type-error))
+                      ;; Check branch compatibility
+                      ((not (types-compatible? true-type false-type))
+                       (if (not (types-compatible? false-type true-type))
+                           (begin (print "Type Error: 'if' branches have incompatible types:" true-type "and" false-type) 'type-error)
+                           ;; If false is compatible with true, return true's info
+                           true-info))
+                       ;; If true is compatible with false (or they are equal), return true's info (full tuple)
+                       (else true-info) ;; Return the full tuple (type . scope . borrow-status)
+                    )
+                 )
+              )
+          ))
+         ((= op 'lambda)
+          ;; (lambda ((param1 type1) ...) body...) -> (-> (type1...) body-type)
+          ;; The resulting function value is not borrowed and has global scope origin.
+          (if (or (not (pair? args)) (not (list? (car args))) (null? (cdr args)))
+              (begin (print "Type Error: Invalid lambda form.") 'type-error)
+              (let ((params-with-types (car args))
+                    (body-forms (cdr args))
+                    (lambda-scope-id (generate-scope-id))) ;; Generate unique scope ID for this lambda
+                 ;; 1. Extract param names and types
+                 (define (extract-params-types lst names-acc types-acc)
+                   (if (null? lst) (cons (reverse names-acc) (reverse types-acc))
+                       (let ((entry (car lst)))
+                         (if (or (not (pair? entry)) (not (pair? (cdr entry))) (not (null? (cddr entry))) (not (symbol? (car entry))) (not (symbol? (cadr entry))))
+                             (begin (print "Type Error: Invalid lambda parameter format:" entry) 'error)
+                             (extract-params-types (cdr lst) (cons (car entry) names-acc) (cons (cadr entry) types-acc))))))
+                 (let ((extracted (extract-params-types params-with-types '() '())))
+                   (if (= extracted 'error) 'type-error
+                       (let ((params (car extracted)) (param-types (cdr extracted)))
+                         ;; 2. Create extended type environment frame with lambda-scope-id
+                         (define lambda-frame
+                           ;; Define parameters with lambda-scope-id and 'not-borrowed' status
+                           (map (lambda (p t) (cons p (list t lambda-scope-id 'not-borrowed))) params param-types))
+                         (define lambda-tenv (extend-type-env lambda-frame tenv))
+                         ;; 3. Check type of the *last* body expression in the extended env & scope
+                         (define (last-element lst) (if (null? (cdr lst)) (car lst) (last-element (cdr lst))))
+                         (define (check-body body-list env scope-id)
+                            (if (null? (cdr body-list)) (type-of (car body-list) env scope-id)
+                                (let ((current-info (type-of (car body-list) env scope-id)))
+                                   (if (= current-info 'type-error) 'type-error
+                                       (check-body (cdr body-list) env scope-id)))))
+                         (let ((body-result-info (check-body body-forms lambda-tenv lambda-scope-id)))
+                           (if (= body-result-info 'type-error) 'type-error
+                               (begin
+                                 ;; --- LIFETIME CHECK ---
+                                 (if (is-ref-type-info? body-result-info)
+                                     (let ((origin-scope (get-scope-id-from-info body-result-info)))
+                                       (if (= origin-scope lambda-scope-id)
+                                           (begin
+                                             (print "Lifetime Error: Lambda cannot return reference to internal variable/parameter:" expr)
+                                             'type-error ;; Signal error
+                                           )
+                                           #f ;; Check passed (reference is to outer scope)
+                                       )
+                                     )
+                                     #f ;; Not a reference, check passed
+                                 )
+                                 ;; Check if lifetime error occurred
+                                 (if (= body-result-info 'type-error) ;; Re-check in case the check above set it
+                                     'type-error
+                                     ;; 4. Construct function type and return with global scope, not borrowed
+                                     (list (list '-> param-types (get-type-from-info body-result-info))
+                                           *global-scope-id*
+                                           'not-borrowed)
+                                 )
+                               )
+                           )
+                         )
+                       )
+                   )
+                 )
+              )
+          ))
+         ((= op 'define)
+          ;; (define sym expr) or (define (fn ...) body...)
+          ;; Returns the type info tuple of the defined value/function.
+          ;; The define itself conceptually has type 'void', but returning the value's info
+          ;; allows type-check-program to update the environment.
+          (cond
+            ;; Case 1: (define symbol value)
+            ((and (pair? args) (symbol? (car args)) (pair? (cdr args)) (null? (cddr args)))
+             (let ((sym (car args)) (val-expr (cadr args)))
+               ;; Check the value type first
+               (let ((val-info (type-of val-expr tenv current-scope-id)))
+                 (if (= val-info 'type-error) 'type-error
+                     ;; Return the value's info. The environment update happens in type-check-program.
+                     val-info
+                 )
+               )
+             ))
+            ;; Case 2: (define (func ...) body...) - Syntactic sugar
+            ((and (pair? args) (pair? (car args)))
+             (let ((func-sig (car args)) (body-forms (cdr args)))
+               (if (or (null? body-forms) (not (symbol? (car func-sig))) (not (list? (cdr func-sig))))
+                   (begin (print "Type Error: Invalid function definition.") 'type-error)
+                   ;; Construct and check the equivalent lambda
+                   (let ((lambda-expr (list 'lambda (cdr func-sig) body-forms)))
+                      ;; Check if lambda parameters require type annotations
+                      (define (check-lambda-params params)
+                         (if (null? params) #t ;; OK if no params
+                             (if (pair? (car params)) ;; Check if first param is like (p t)
+                                 (check-lambda-params (cdr params))
+                                 #f))) ;; Invalid if param is not a pair
+                      (if (check-lambda-params (cdr func-sig))
+                          (type-of lambda-expr tenv current-scope-id) ;; Return the lambda's type info tuple
+                          (begin (print "Type Error: Function definition requires type annotations for parameters:" func-sig) 'type-error)
+                      )
+                   )
+               )
+             ))
+            (else (begin (print "Type Error: Invalid define form:" expr) 'type-error))
+          ))
+         ((= op 'let)
+           ;; (let ((var1 val1) ...) body...)
+           ;; Result borrow status depends on the body's result.
+           (if (or (not (pair? args)) (not (list? (car args))) (null? (cdr args)))
+               (begin (print "Type Error: Invalid let form.") 'type-error)
+               (let ((bindings (car args))
+                     (body-forms (cdr args))
+                     (let-scope-id (generate-scope-id))) ;; Generate unique scope ID for this let
+                  ;; 1. Build the local type environment frame
+                  (define (build-let-frame bindings-list outer-tenv outer-scope frame-acc)
+                     (if (null? bindings-list) (reverse frame-acc)
+                         (let ((binding (car bindings-list)))
+                            (if (or (not (pair? binding)) (not (pair? (cdr binding))) (not (null? (cddr binding))) (not (symbol? (car binding))))
+                                (begin (print "Type Error: Invalid let binding:" binding) 'error)
+                                (let* ((var (car binding)) (val-expr (cadr binding))
+                                       (val-info (type-of val-expr outer-tenv outer-scope))) ;; Check value in outer scope
+                                    (if (= val-info 'type-error) 'error
+                                        ;; Store var with let-scope-id, inferred type, and 'not-borrowed' status
+                                        (build-let-frame (cdr bindings-list) outer-tenv outer-scope
+                                                         (cons (cons var (list (get-type-from-info val-info) let-scope-id 'not-borrowed)) frame-acc))))))))
+                  (let ((let-frame (build-let-frame bindings tenv current-scope-id '())))
+                     (if (= let-frame 'error) 'type-error
+                         ;; 2. Extend environment and check body type in let-scope-id
+                         (let ((let-tenv (extend-type-env let-frame tenv)))
+                            (define (last-element lst) (if (null? (cdr lst)) (car lst) (last-element (cdr lst))))
+                            (define (check-body body-list env scope-id)
+                               (if (null? (cdr body-list)) (type-of (car body-list) env scope-id)
+                                   (let ((current-info (type-of (car body-list) env scope-id)))
+                                      (if (= current-info 'type-error) 'type-error
+                                          (check-body (cdr body-list) env scope-id)))))
+                            (let ((body-result-info (check-body body-forms let-tenv let-scope-id)))
+                              (if (= body-result-info 'type-error) 'type-error
+                                  (begin
+                                    ;; --- LIFETIME CHECK ---
+                                    (if (is-ref-type-info? body-result-info)
+                                        (let ((origin-scope (get-scope-id-from-info body-result-info)))
+                                          (if (= origin-scope let-scope-id)
+                                              (begin
+                                                (print "Lifetime Error: Let cannot return reference to internal binding:" expr)
+                                                'type-error ;; Signal error
+                                              )
+                                              #f ;; Check passed
+                                          )
+                                        )
+                                        #f ;; Not a reference, check passed
+                                    )
+                                    ;; Return result info tuple if no error, otherwise return the error
+                                    (if (= body-result-info 'type-error) 'type-error body-result-info) ;; Return full tuple
+                                  )
+                              )
+                            )
+                         )
+                     )
+                  )
+               )
+           ))
+
+         ((= op 'ref) ;; (ref expr) -> ((ref T) . origin-scope-id . 'not-borrowed)
+           (if (or (not (pair? args)) (not (null? (cdr args))))
+               (begin (print "Type Error: 'ref' requires exactly one argument.") 'type-error)
+               (let ((operand-expr (car args)))
+                 (if (not (symbol? operand-expr))
+                     (begin (print "Borrow Error: Can only take reference of a symbol, not expression:" operand-expr) 'type-error)
+                     ;; It's a symbol, check its type and borrow status
+                     (let ((operand-info (type-of operand-expr tenv current-scope-id)))
+                       (cond
+                         ((= operand-info 'type-error) 'type-error)
+                         ;; --- BORROW CHECK (Creation) ---
+                         ((= (get-borrow-status-from-info operand-info) 'borrowed-mutably)
+                          (begin (print "Borrow Error: Cannot take reference of '" operand-expr "' because it is already mutably borrowed.") 'type-error))
+                         ;; --- OK ---
+                         (else
+                          ;; Construct (ref T), keep original scope ID, mark result as not borrowed itself.
+                          ;; NOTE: We are NOT updating the operand's borrow status here in type-of.
+                          (list (list 'ref (get-type-from-info operand-info))
+                                (get-scope-id-from-info operand-info)
+                                'not-borrowed))
+                       )
+                     )
+                 )
+               )
+           ))
+         ((= op 'deref) ;; (deref ref-expr) -> (T . origin-scope-id . borrow-status-of-ref)
+           (if (or (not (pair? args)) (not (null? (cdr args))))
+               (begin (print "Type Error: 'deref' requires exactly one argument.") 'type-error)
+               (let ((ref-info (type-of (car args) tenv current-scope-id))) ;; Get tuple for the reference expr
+                  (cond
+                     ((= ref-info 'type-error) 'type-error)
+                     ((not (is-ref-type-info? ref-info)) ;; Check the type part of the tuple
+                      (begin (print "Type Error: 'deref' requires a reference type, got:" (get-type-from-info ref-info)) 'type-error))
+                     (else ;; It is a ref type info
+                      ;; Return the inner type T, keeping the original scope ID and borrow status of the reference itself
+                      (list (get-inner-ref-type ref-info)
+                            (get-scope-id-from-info ref-info)
+                            (get-borrow-status-from-info ref-info)))
+                  )
+               )
+           ))
+         ;; --- Function Application ---
+         (else ;; Assume it's a function call: (func arg1 arg2 ...)
+           (print "[DEBUG TOF] Application op:" op " args:" args) ;; <<< ADDED DEBUG PRINT
+           (let ((op-info (type-of op tenv current-scope-id))) ;; Get type info tuple of the operator
+             (cond
+               ((= op-info 'type-error) 'type-error)
+               (else
+                (let ((op-type (get-type-from-info op-info))) ;; Extract just the type (e.g., (-> ...))
+                  (cond
+                    ((not (is-function-type? op-type))
+                     (begin (print "Type Error: Attempting to call non-function:" op " which has type:" op-type) 'type-error))
+                    (else ;; It's a function type
+                     (let ((expected-arg-types (get-arg-types op-type))
+                           (return-type (get-return-type op-type))
+                           (actual-arg-exprs args))
+                       (if (or (= expected-arg-types #f) (= return-type #f)) 'type-error
+                           (begin
+                             ;; Calculate type info tuples of actual arguments
+                             (define actual-arg-infos (map (lambda (arg-expr) (type-of arg-expr tenv current-scope-id)) actual-arg-exprs))
+                             ;; Check for errors during argument type calculation
+                             (define arg-info-error? (lambda (info) (= info 'type-error)))
+                             (if (any? arg-info-error? actual-arg-infos) 'type-error
+                                 (begin
+                                   ;; Extract actual types for compatibility check
+                                   (define actual-arg-types (map get-type-from-info actual-arg-infos))
+                                   ;; TODO: Enhance check-args to consider borrow status if passing references?
+                                   ;; For now, just check type compatibility.
+                                   (if (check-args expected-arg-types actual-arg-types op)
+                                       ;; Success: return the function's declared return type tuple
+                                       ;; (global scope, not borrowed for the result value itself)
+                                       (list return-type *global-scope-id* 'not-borrowed)
+                                       'type-error ;; Failure: argument check failed
+                                   )
+                                 )
+                             )
+                           )
+                       )
+                     ))
+                  )
+                )
+               )
+             )
+           ))
+       ) ;; End inner cond
+     )) ;; End let for pair
+    (else
+     (print "Type Error: Unknown expression form:" expr)
+     'type-error)
+  )
+)
+
+
+;; Helper to get the type of a literal value (used by 'quote')
+(define (literal-type-of literal)
+  (cond
+    ((integer? literal) 'int)
+    ((boolean? literal) 'bool)
+    ((string? literal) 'string)
+    ((float? literal) 'float)
+    ((null? literal) 'nil)
+    ((symbol? literal) 'symbol) ;; Type of a quoted symbol is 'symbol
+    ((pair? literal) 'pair) ;; Simplistic type for pairs/lists for now
+    (else 'unknown-literal-type)
+  )
+)
+
+;; Type checks a list of top-level forms, updating the environment for defines.
+;; Includes borrow checking logic integrated with type checking.
+;; Returns #t if successful, #f on failure.
+(define (type-check-program forms initial-tenv)
+  (print "--- Starting Type Checking Pass (with scope and borrow checks) ---")
+  (define (check-forms-iter forms current-tenv)
+    (if (null? forms)
+        #t ;; Success, reached end of forms
+        (let ((form (car forms))
+              (remaining-forms (cdr forms)))
+          (print "[DEBUG TCP] Checking form:" form) ;; <<< ADDED DEBUG PRINT
+          ;; (print "[Type Check Program] Checking form:" form " TEnv:" current-tenv)
+          ;; Check the current form in the global scope
+          (let ((form-info (type-of form current-tenv *global-scope-id*))) ;; Returns tuple or 'type-error
+            (cond
+              ;; --- Error Propagation ---
+              ((= form-info 'type-error)
+               (print "[Type Check Program] Error detected in form, stopping.")
+               #f) ;; Stop and return failure
+
+              ;; --- Handle Define ---
+              ((and (pair? form) (= (car form) 'define))
+               ;; 'form-info' holds the calculated type info tuple of the value/function
+               (let ((updated-tenv #f))
+                  (cond
+                     ;; Case 1: (define symbol value)
+                     ((and (pair? (cdr form)) (symbol? (cadr form)) (pair? (cddr form)) (null? (cdddr form)))
+                      (let ((sym (cadr form)) (defined-type (get-type-from-info form-info)))
+                         (print "[Type Check Program] Defining" sym "with type" defined-type)
+                         ;; Define in the global scope with 'not-borrowed' status
+                         (set! updated-tenv (define-type-with-scope sym defined-type *global-scope-id* current-tenv))
+                      ))
+                     ;; Case 2: (define (func ...) body...)
+                     ((and (pair? (cdr form)) (pair? (cadr form)))
+                      (let ((func-sig (cadr form)))
+                         (if (not (symbol? (car func-sig)))
+                             (begin (print "Type Error: Invalid function definition signature:" func-sig) (set! updated-tenv 'type-error))
+                             (let ((func-name (car func-sig)) (func-type (get-type-from-info form-info)))
+                                (print "[Type Check Program] Defining function" func-name "with inferred type" func-type)
+                                ;; Define in the global scope with 'not-borrowed' status
+                                (set! updated-tenv (define-type-with-scope func-name func-type *global-scope-id* current-tenv))
+                             )
+                         )
+                      ))
+                     ;; Invalid define
+                     (else (begin (print "[Type Check Program] Unexpected invalid define form.") (set! updated-tenv 'type-error)))
+                  )
+                  ;; Recurse with the updated environment (or error)
+                  (if (= updated-tenv 'type-error)
+                      #f ;; Propagate error as failure
+                      (check-forms-iter remaining-forms updated-tenv)
+                  )
+               ))
+
+              ;; --- Other Top-Level Forms (e.g., expressions to evaluate) ---
+              (else
+               ;; Just check the form, environment doesn't change at this level
+               ;; We already checked it with type-of above, so just proceed
+               (check-forms-iter remaining-forms current-tenv))
+            )
+          )
+        )
+    )
+  )
+  ;; Initialize the type environment with primitive types (using global scope ID, not borrowed)
+  (define (create-initial-tenv primitive-types)
+     (list ;; Create the first frame
+       (map (lambda (entry)
+              (cons (car entry) ;; Primitive symbol
+                    (list (cdr entry) *global-scope-id* 'not-borrowed))) ;; (type . 'global . 'not-borrowed)
+            primitive-types)
+     )
+  )
+  ;; Pass the literal list directly to avoid codegen issues with the global define
+  (let ((tenv-with-prims (create-initial-tenv
+                           '( (cons . (-> (any any) pair))
+                              (car . (-> (pair) any))
+                              (cdr . (-> (pair) any))
+                              (+ . (-> (number ...) number))
+                              (- . (-> (number ...) number))
+                              (* . (-> (number ...) number))
+                              (/ . (-> (number ...) float))
+                              (= . (-> (number number ...) bool))
+                              (< . (-> (number number ...) bool))
+                              (> . (-> (number number ...) bool))
+                              (pair? . (-> (any) bool))
+                              (null? . (-> (any) bool))
+                              (integer? . (-> (any) bool))
+                              (boolean? . (-> (any) bool))
+                              (symbol? . (-> (any) bool))
+                              (string? . (-> (any) bool))
+                              (float? . (-> (any) bool))
+                              ;; (closure? . (-> (any) bool)) ;; Removed due to codegen issues
+                              (string-append . (-> (string ...) string))
+                              (string->symbol . (-> (string) symbol))
+                              (symbol->string . (-> (symbol) string))
+                              (print . (-> (any ...) bool))
+                              (read-file . (-> (string) (or string bool))) ;; Keep union for now
+                              (write-file . (-> (string string) bool))
+                              (command-line-args . (-> () any)) ;; Changed (list string) to any
+                              (parse-string . (-> (string) any)) ;; Changed (or list bool) to any
+                              (codegen-program . (-> (list) any)) ;; Changed (or string bool) to any
+                              (append . (-> (any ...) any)) ;; Changed list args/ret to any
+                              (eval . (-> (any) any))
+                              (apply . (-> (any any) any)) ;; Changed list arg to any
+                              (eval-in-compiler-env . (-> (any) any))
+                              ;; (deref . (-> ((ref any)) any)) ;; Removed: Handled as special form in type-of, avoids codegen bug
+                           ))))
+     ;; Start the iteration with the initial environment containing primitives
+     (check-forms-iter forms tenv-with-prims) ;; Returns #t or #f
+  )
+)
+
+
+;; --- String Utilities ---
+;; Joins a list of strings with a separator
+(define (string-join strings sep)
+  (if (null? strings)
+      ""
+      (if (null? (cdr strings))
+          (car strings)
+          (string-append (car strings) sep (string-join (cdr strings) sep)))))
+
+
+;; --- FFI Processing Helpers ---
+
+;; Maps Cheng FFI type symbols to C type strings
+(define (cheng-type-symbol->c-type-string type-sym)
+  (cond ((= type-sym 'c-void) "void")
+        ((= type-sym 'c-int) "int")
+        ((= type-sym 'c-long) "long") ;; Added long
+        ((= type-sym 'c-float) "float")
+        ((= type-sym 'c-double) "double")
+        ((= type-sym 'c-char) "char")
+        ((= type-sym 'c-string) "const char*") ;; Map c-string to const char*
+        ((= type-sym 'c-ptr) "void*") ;; Generic pointer
+        ((= type-sym 'l0-value) "L0_Value*") ;; Allow passing/returning raw L0 values
+        (else
+         (begin
+           (print "Error: Unknown C FFI type symbol:" type-sym)
+           "/* unknown_type */" ;; Return comment on error
+           ))))
+
+;; Checks if a form is a c-declare form
+(define (is-c-declare? form)
+  (and (pair? form) (= (car form) 'c-declare)))
+
+;; Extracts info from a c-declare form
+;; Returns: '(cheng-name c-name-string return-type (arg-types...)) or #f on error
+(define (process-c-declare form)
+  (if (or (not (pair? form)) (< (length form) 5)) ;; (c-declare name "c_name" ret (arg...))
+      (begin (print "Error: Invalid c-declare form:" form) #f)
+      (let ((cheng-name (cadr form))
+            (c-name-str (caddr form))
+            (ret-type (cadddr form)) ;; 4th element
+            (arg-types (car (cddddr form)))) ;; 5th element should be the list of args
+        (if (not (symbol? cheng-name))
+            (begin (print "Error: c-declare Cheng name must be a symbol:" cheng-name) #f)
+            (if (not (string? c-name-str))
+                (begin (print "Error: c-declare C name must be a string:" c-name-str) #f)
+                (if (not (symbol? ret-type)) ;; Basic check, could validate specific types later
+                    (begin (print "Error: c-declare return type must be a symbol:" ret-type) #f)
+                    (if (not (list? arg-types)) ;; Check arg-types is a list
+                        (begin (print "Error: c-declare argument types must be a list:" arg-types) #f)
+                        ;; TODO: Validate individual arg types are symbols?
+                        (list cheng-name c-name-str ret-type arg-types) ;; Success
+                    )
+                )
+            )
+        )
+      )
+  )
+)
+
+;; Checks if a form is a c-export form
+(define (is-c-export? form)
+  (and (pair? form) (= (car form) 'c-export)))
+
+;; Generates placeholder C wrapper code for a c-export form
+;; Returns: C code string or #f on error
+(define (process-c-export form)
+  (if (or (not (pair? form)) (< (length form) 5)) ;; (c-export "c_name" cheng-fn ret (arg...))
+      (begin (print "Error: Invalid c-export form:" form) #f)
+      (let ((c-name-str (cadr form))
+            (cheng-fn-name (caddr form))
+            (ret-type (cadddr form))
+            (arg-types (car (cddddr form))))
+         (if (not (string? c-name-str))
+             (begin (print "Error: c-export C name must be a string:" c-name-str) #f)
+             (if (not (symbol? cheng-fn-name))
+                 (begin (print "Error: c-export Cheng function name must be a symbol:" cheng-fn-name) #f)
+                 (if (not (symbol? ret-type))
+                     (begin (print "Error: c-export return type must be a symbol:" ret-type) #f)
+                     (if (not (list? arg-types))
+                         (begin (print "Error: c-export argument types must be a list:" arg-types) #f)
+                         ;; --- Placeholder C Code Generation ---
+                         (string-append
+                          "// --- Placeholder C Export Wrapper for " c-name-str " ---\n"
+                          "// TODO: Implement actual type conversion and function call\n"
+                          "// Signature: " (cheng-type-symbol->c-type-string ret-type) " " c-name-str "("
+                          ;; TODO: Generate C arg list string from arg-types
+                          ") {\n"
+                          "    // 1. Convert C args to L0_Value*\n"
+                          "    // 2. Find Cheng function '" (symbol->string cheng-fn-name) "'\n"
+                          "    // 3. Call Cheng function using l0_apply or similar\n"
+                          "    // 4. Convert L0_Value* result back to C " (cheng-type-symbol->c-type-string ret-type) "\n"
+                          "    // 5. Return C result\n"
+                          "    printf(\"Warning: C export wrapper for " c-name-str " is not implemented!\\n\");\n"
+                          "    return (" (cheng-type-symbol->c-type-string ret-type) ")0; // Placeholder return\n"
+                          "}\n\n"
+                         ) ;; End string-append
+                     )
+                 )
+             )
+         )
+      )
+  )
+)
+
+
+;; Expands top-level forms, handling defmacro, c-declare, c-export
+(define (expand-macros-top-level forms table)
+  (print "Expanding top-level forms (including FFI)...")
+  ;; Separate forms into categories
+  (define defmacros (filter is-defmacro? forms))
+  (define c_declarations (filter is-c-declare? forms))
+  (define c_exports (filter is-c-export? forms))
+  (define base_forms (filter (lambda (f) (and (not (is-defmacro? f))
+                                              (not (is-c-declare? f))
+                                              (not (is-c-export? f))))
+                             forms))
+
+  (print "Found defmacros:" defmacros)
+  (print "Found c-declarations:" c_declarations)
+  (print "Found c-exports:" c_exports)
+  (print "Base forms:" base_forms)
+
+  ;; 1. Process defmacros and update the *macro-table*
+  (define (register-macros macro-defs current-table)
+    (if (null? macro-defs)
+        current-table
+        (let ((macro-pair (process-defmacro (car macro-defs))))
+          (if macro-pair ;; Check if processing was successful
+              (register-macros (cdr macro-defs) (cons macro-pair current-table))
+              (register-macros (cdr macro-defs) current-table) ;; Skip invalid defmacro
+          )
+        )
+    )
+  )
+  ;; Update the global table (using set! for simplicity now)
+  (set! *macro-table* (register-macros defmacros *macro-table*))
+  (print "Updated macro table:" *macro-table*)
+
+  ;; 2. Process c-declarations and update *c-declarations*
+  (define (register-c-declarations decls current-decls)
+    (if (null? decls)
+        current-decls
+        (let ((processed (process-c-declare (car decls))))
+          (if processed
+              (register-c-declarations (cdr decls) (cons processed current-decls))
+              (register-c-declarations (cdr decls) current-decls) ;; Skip invalid
+          )
+        )
+    )
+  )
+  (set! *c-declarations* (register-c-declarations c_declarations *c-declarations*))
+  (print "Updated c-declarations list:" *c-declarations*)
+
+  ;; 3. Process c-exports and update *c-exports-code*
+  (define (register-c-exports exports current-exports-code)
+      (if (null? exports)
+          current-exports-code
+          (let ((wrapper-code (process-c-export (car exports))))
+            (if wrapper-code
+                (register-c-exports (cdr exports) (cons wrapper-code current-exports-code))
+                (register-c-exports (cdr exports) current-exports-code) ;; Skip invalid
+            )
+          )
+      )
+    )
+  (set! *c-exports-code* (register-c-exports c_exports *c-exports-code*))
+  (print "Updated c-exports code list (placeholders):" *c-exports-code*)
+
+
+  ;; 4. Expand macros in the remaining base forms
+  (define expanded-base (map (lambda (form) (macro-expand form *macro-table*)) base_forms))
+
+  (print "Expansion complete. Returning expanded base forms.")
+  expanded-base ;; Return only the expanded base forms
+)
+
+;; --- Helper for Error Formatting ---
+(define (format-error error-type filename) ;; Removed varargs (. details)
+  (define base-message
+    (cond ((= error-type 'type-check-failed) (string-append "Type checking failed for file: " filename)) ;; Added type check error
+          ((= error-type 'read-error) (string-append "Error reading file: " filename))
+          ((= error-type 'parse-error) (string-append "Error parsing file: " filename))
+          ((= error-type 'codegen-error) (string-append "Error generating code for: " filename))
+          ((= error-type 'write-error) (string-append "Error writing output file: " filename))
+          ((= error-type 'arg-type-error) "Error: Command line arguments must be strings.")
+          ((= error-type 'arg-count-error) "Error: Expected exactly two command line arguments.")
+          (else "Unknown error.")))
+
+  (define reason (get-last-error-message))
+  (define reason-str
+      (if (string? reason)
+          (string-append " Reason: " reason)
+          " Reason: (unknown - no message from primitive)"))
+
+  ;; Handle optional line/col for parse/codegen errors
+  (define location-str "")
+  (if (or (= error-type 'parse-error) (= error-type 'codegen-error))
+      (begin
+        (define err-line (get-last-error-line))
+        (define err-col (get-last-error-col))
+        (set! location-str (string-append " At Line: " (number->string err-line)
+                                          " Col: " (number->string err-col)))
+      )
+      ;; else: no location info needed
+      () ;; Empty expression for else branch
+  )
+
+  (string-append base-message location-str reason-str)
+)
+
+
+;; --- Main Compiler Function ---
+(define (compile-l0 input-filename output-filename)
+  (print "Reading input file: " input-filename)
+  (define source-content (read-file input-filename))
+
+  (if (boolean? source-content) ;; read-file returns #f on error
+      (begin
+        (print (format-error 'read-error input-filename))
+        'read-error ;; Return error symbol
+      )
+      (begin ;; Start of the 'else' block for the outer 'if'
+        (print "Parsing L0 code...")
+        (define ast (parse-string source-content)) ;; Call the parse-string primitive
+
+        (if (boolean? ast) ;; parse-string returns #f on error
+            (begin
+              (print (format-error 'parse-error input-filename))
+              'parse-error ;; Return error symbol
+            )
+            ;; --- Parsing succeeded, continue to codegen ---
+            (begin
+              (print "Parsing successful. AST:")
+              ;; (print ast) ;; Optional: print parsed AST
+
+              ;; --- Pre-Codegen Pass (Macros, FFI processing) ---
+              (print "Processing top-level forms (Macros, FFI)...")
+              ;; Reset global FFI lists for this compilation unit
+              (set! *c-declarations* '())
+              (set! *c-exports-code* '())
+              ;; Pass the initial *macro-table* (which might be empty or pre-populated)
+              (define expanded-base-ast (expand-macros-top-level ast *macro-table*))
+              (print "Top-level processing complete. Final base AST for codegen:")
+              ;; (print expanded-base-ast) ;; Optional: print expanded AST
+
+              ;; --- Type Checking Pass ---
+              ;; NOTE: Re-enabling type checking.
+              ;; (print "--- SKIPPING Type Checking Pass ---") ;; Removed skip
+              ;; (define type-check-ok #t) ;; Removed forced OK
+
+              (print "Running type checking pass (with scope and borrow checks)...")
+              (define type-check-ok (type-check-program expanded-base-ast '())) ;; Start with empty tenv, primitives added inside
+
+              (if (not type-check-ok) ;; type-check-program now returns #t or #f
+                  (begin
+                    (print (format-error 'type-check-failed input-filename))
+                    'type-check-failed ;; Return specific symbol for testing
+                  )
+                  ;; --- Type Checking OK (or skipped) ---
+                  (begin
+                    (print "Type checking successful (or skipped).")
+                    ;; --- Proceed to Code Generation ---
+                    (print "Generating C code...")
+                    (define c-code (codegen-program expanded-base-ast)) ;; Call the codegen primitive
+
+                    (if (boolean? c-code) ;; codegen-program returns #f on error
+                        (begin
+                          (print (format-error 'codegen-error input-filename))
+                          'codegen-error
+                        )
+                        ;; --- Codegen OK, write file ---
+                        (begin
+                          (print "Codegen successful. Writing to file: " output-filename)
+                          (define write-ok (write-file output-filename c-code))
+                          (if write-ok
+                              (begin (print "Compilation successful.") 'success)
+                              (begin (print (format-error 'write-error output-filename)) 'write-error)
+                          )
+                        )
+                    )
+                  ) ;; Closes the 'begin' for type checking success/skip
+              ) ;; Closes the 'if (not type-check-ok)'
+            ) ;; Closes the 'begin' for parsing success
+        ) ;; Closes the 'if (boolean? ast)'
+      ) ;; <<< This closes the 'else' block for the outer 'if (boolean? source-content)'
+  ) ;; <<< This closes the 'define compile-l0'
+)
+;; --- Entry Point ---
+(define main
+  (lambda ()
+    (print "L0 Compiler (Stage 1) starting...")
+    (print "--- Stage 1 Compiler: String Test ---") ;; Added string literal test
+
+    ;; --- EARLY READ-FILE TEST --- REMOVED ---
+
+    (define args (command-line-args))
+    (print "Command line args received:" args)
+
+    ;; Check if we got exactly two arguments
+    (define result 'init-error) ;; Default error if args are wrong
+
+    (if (and (pair? args)           ;; Must have at least one arg pair
+             (pair? (cdr args))     ;; Must have at least two arg pairs
+             (null? (cdr (cdr args)))) ;; Must end after the second arg
+        (begin
+          (define input-filename (car args))
+          (define output-filename (car (cdr args))) ;; cadr
+
+          ;; Basic type check (assuming args are strings)
+          (if (and (string? input-filename) (string? output-filename))
+              (set! result (compile-l0 input-filename output-filename)) ;; Capture result
+              (begin
+                 (print (format-error 'arg-type-error #f)) ;; Pass #f as filename placeholder
+                 (set! result 'arg-type-error)
+              )
+          )
+        )
+        ;; Else: Incorrect number of arguments
+        (begin
+           (print (format-error 'arg-count-error #f)) ;; Pass #f as filename placeholder
+           (set! result 'arg-count-error)
+        )
+    )
+    (print "L0 Compiler finished with result: " result)
+    result ;; Return the actual result symbol
+  )
+)
+
+;; Run the main function
+(main)

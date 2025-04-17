@@ -1,0 +1,22 @@
+;; Test file for L1 Float support
+
+(print "--- Float Test ---")
+
+(define pi 3.14159)
+(define radius 10.0)
+(define circumference (* 2.0 pi radius)) ;; Float multiplication
+
+(print "Pi:" pi)
+(print "Radius:" radius)
+(print "Circumference:" circumference)
+
+(print "Is pi a float?" (float? pi))
+(print "Is radius a float?" (float? radius))
+(print "Is 10 an integer?" (integer? 10))
+(print "Is 10.0 a float?" (float? 10.0))
+(print "Is 10.0 an integer?" (integer? 10.0)) ;; Should be #f
+
+(print "Simple float addition:" (+ 1.5 2.5)) ;; TODO: Update primitives for float math
+(print "Simple float subtraction:" (- 5.0 1.5)) ;; TODO: Update primitives for float math
+
+(print "--- Float Test End ---")
