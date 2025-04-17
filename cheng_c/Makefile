@@ -44,6 +44,11 @@ STAGE7_MACRO_GEN_C = compiler_stage7_macro.c # Assuming this is the C file gener
 STAGE7_MACRO_GEN_OBJ = $(OBJ_DIR)/compiler_stage7_macro.o
 STAGE7_MACRO_EXE = $(BIN_DIR)/compiler_stage7_macro.exe
 
+# Stage 7 Typecheck Compiler (Specific C file)
+STAGE7_TYPECHECK_C = compiler_stage7_typecheck_fix4.c # Source file relative to Makefile - UPDATED for fix4
+STAGE7_TYPECHECK_OBJ = $(patsubst %.c,$(OBJ_DIR)/%.o,$(STAGE7_TYPECHECK_C)) # Derive OBJ from C
+STAGE7_TYPECHECK_EXE = $(BIN_DIR)/compiler_stage7_typecheck_fix4.exe # Keep the desired output name - UPDATED for fix4
+
 
 # L0 source for the compiler itself
 L0_COMPILER_SRC = ../src/l0_compiler/compiler.l0 # Adjusted path relative to cheng_c
@@ -59,7 +64,7 @@ TEST_EVAL_EXE = $(BIN_DIR)/test_eval.exe
 # Headers (simplified dependency)
 HEADERS = $(wildcard $(INCLUDE_DIR)/*.h)
 
-.PHONY: all clean stage0 stage1 stage2 stage3 tests bootstrap_stage1 bootstrap compare prepare_dirs
+.PHONY: all clean stage0 stage1 stage2 stage3 stage6 stage7_macro stage7_typecheck tests bootstrap_stage1 bootstrap compare prepare_dirs
 
 # Target to ensure directories exist
 prepare_dirs:
@@ -67,7 +72,7 @@ prepare_dirs:
 	-@cmd /c mkdir $(BIN_DIR) 2> nul || ver > nul
 	-@cmd /c mkdir $(OBJ_DIR) 2> nul || ver > nul
 
-all: prepare_dirs stage0 stage6 stage7_macro tests # Add stage7_macro to default build and depend on prepare_dirs
+all: prepare_dirs stage0 stage6 stage7_macro stage7_typecheck tests # Add stage7_typecheck to default build
 
 stage0: $(STAGE0_EXE)
 
@@ -80,6 +85,8 @@ stage3: $(STAGE3_EXE) # Added stage3 target
 stage6: $(STAGE6_EXE) # Added stage6 target
 
 stage7_macro: $(STAGE7_MACRO_EXE) # Added stage7_macro target
+
+stage7_typecheck: $(STAGE7_TYPECHECK_EXE) # Added stage7_typecheck target
 
 tests: $(TEST_ARENA_EXE) $(TEST_PARSER_EXE) $(TEST_EVAL_EXE)
 
@@ -149,6 +156,22 @@ $(STAGE7_MACRO_GEN_OBJ): $(STAGE7_MACRO_GEN_C) $(HEADERS)
 # Depends on the Stage 7 object file and runtime objects
 $(STAGE7_MACRO_EXE): $(STAGE7_MACRO_GEN_OBJ) $(RUNTIME_OBJS)
 	@echo "Linking Stage 7 (macro fix) executable: $@"
+	$(CC) $(CFLAGS) $^ -o $@
+
+# --- Rules for Stage 7 Typecheck ---
+# Rule to GENERATE Stage 7 typecheck C code using Stage 7 macro compiler
+$(STAGE7_TYPECHECK_C): $(STAGE7_MACRO_EXE) $(L0_COMPILER_SRC)
+	@echo "Generating Stage 7 Typecheck C code ($(STAGE7_TYPECHECK_C)) using Stage 7 Macro compiler..."
+	$(STAGE7_MACRO_EXE) $(L0_COMPILER_SRC) $@
+
+# Rule to build Stage 7 typecheck object from its specific C file
+$(STAGE7_TYPECHECK_OBJ): $(STAGE7_TYPECHECK_C) $(HEADERS)
+	@echo "Compiling Stage 7 Typecheck C code: $<"
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Rule to build Stage 7 typecheck executable
+$(STAGE7_TYPECHECK_EXE): $(STAGE7_TYPECHECK_OBJ) $(RUNTIME_OBJS)
+	@echo "Linking Stage 7 Typecheck executable: $@"
 	$(CC) $(CFLAGS) $^ -o $@
 
 

@@ -395,6 +395,54 @@
        (cadr (car type-info)) ;; Get T from ((ref T) . scope . borrow)
        #f)) ;; Should not happen if called after is-ref-type-info?
 
+;; Extracts the type part from a type info tuple '(type . scope-id . borrow-status)'
+;; Returns 'type-error if the input is not a valid tuple.
+(define (get-type-from-info type-info)
+  (if (and (pair? type-info) (not (= type-info 'type-error))) ;; Check if it's a valid tuple and not the error symbol
+      (car type-info) ;; Return the type part
+      (begin
+        (print "Internal Error: Invalid type info tuple passed to get-type-from-info:" type-info)
+        'type-error ;; Propagate error or indicate invalid input
+      )
+  )
+)
+
+;; Extracts the scope ID part from a type info tuple
+(define (get-scope-id-from-info type-info)
+  (if (and (pair? type-info) (pair? (cdr type-info)) (not (= type-info 'type-error)))
+      (cadr type-info)
+      (begin (print "Internal Error: Invalid type info tuple for get-scope-id-from-info:" type-info) 'type-error)))
+
+;; Extracts the borrow status part from a type info tuple
+(define (get-borrow-status-from-info type-info)
+  (if (and (pair? type-info) (pair? (cdr type-info)) (pair? (cddr type-info)) (not (= type-info 'type-error)))
+      (caddr type-info)
+      (begin (print "Internal Error: Invalid type info tuple for get-borrow-status-from-info:" type-info) 'type-error)))
+
+
+;; Looks up a symbol in the type environment (list of frames)
+;; Returns the type info tuple '(type . scope-id . borrow-status)' or #f if not found.
+(define (lookup-type-info sym tenv)
+  (if (null? tenv)
+      #f ;; Not found in any frame
+      (let ((current-frame (car tenv))
+            (outer-env (cdr tenv)))
+        ;; Search within the current frame (association list)
+        (define (find-in-frame frame)
+          (cond ((null? frame) #f) ;; Not found in this frame
+                ((= (car (car frame)) sym) ;; Check if symbol matches
+                 (cdr (car frame))) ;; Return the associated type info tuple
+                (else (find-in-frame (cdr frame))))) ;; Check next entry in frame
+        (let ((found-in-frame (find-in-frame current-frame)))
+          (if found-in-frame
+              found-in-frame ;; Found in current frame
+              (lookup-type-info sym outer-env) ;; Not found, search outer environment
+          )
+        )
+      )
+  )
+)
+
 ;; Main type checking/inference function
 ;; Returns the inferred type info tuple '(type . scope-id . borrow-status)' or an error symbol 'type-error
 ;; Note: borrow-status in the returned tuple usually indicates the status *after* the expression,

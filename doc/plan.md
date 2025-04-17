@@ -262,9 +262,8 @@
 *   2025-04-17: 成功编译 Stage 6 (`make stage6`)。
 *   2025-04-17: 成功编译 Stage 7 (宏支持) (`make stage7_macro`)。
 *   2025-04-17: 成功构建测试可执行文件 (`make tests`)。
-*   **当前状态 (2025-04-17):** `cheng_c` 目录下的编译器构建过程已成功完成 (`make all`)。核心自举过程稳定 (Stage 2 和 Stage 3 C 代码相同)。Stage 6 和 Stage 7 (宏支持) 编译器已构建。测试已构建。
+*   **当前状态 (2025-04-17):** `cheng_c` 目录下的编译器构建过程已成功完成 (`make all`)。核心自举过程稳定 (Stage 2 和 Stage 3 C 代码相同)。Stage 6 和 Stage 7 (宏支持) 编译器已构建。测试已构建。Stage 7 (类型检查) 编译器 (`cheng_c/bin/compiler_stage7_typecheck_fix3.exe`) 已成功构建 (`make stage7_typecheck`)。
 *   **当前焦点 / 下一步 (2025-04-17):**
     1.  **(可选)** 运行 C 单元测试 (`test_arena.exe`, `test_parser.exe`, `test_eval.exe`) 确认基础功能正常。
     2.  **继续类型检查开发 (任务 4.1):**
-        *   构建 Stage 7 编译器 (带类型检查): 使用 GCC 编译 `cheng_c/compiler_stage7_typecheck.c` 和 C 运行时，生成新的 Stage 7 编译器可执行文件 (`cheng_c/bin/compiler_stage7_typecheck.exe`)。
-        *   运行类型检查测试 (Stage 7): 使用新构建的 Stage 7 编译器编译 `examples/cheng/test_type_check.l0`，观察类型检查器的输出和行为，验证其正确性并根据需要进行调试或完善 (继续任务 4.1.1, 4.1.2)。
+        *   运行类型检查测试 (Stage 7): 使用已构建的 Stage 7 编译器 (`cheng_c/bin/compiler_stage7_typecheck_fix3.exe`) 编译 `examples/cheng/test_type_check.l0`，观察类型检查器的输出和行为，验证其正确性并根据需要进行调试或完善 (继续任务 4.1.1, 4.1.2)。
